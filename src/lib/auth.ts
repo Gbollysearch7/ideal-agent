@@ -1,12 +1,9 @@
-import { PrismaAdapter } from '@auth/prisma-adapter';
 import NextAuth, { NextAuthConfig } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
-import { prisma } from './prisma';
-import type { Adapter } from 'next-auth/adapters';
+import { supabaseAdmin } from './supabase';
 
 export const authConfig: NextAuthConfig = {
-  adapter: PrismaAdapter(prisma) as Adapter,
   session: {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -28,17 +25,19 @@ export const authConfig: NextAuthConfig = {
           throw new Error('Email and password are required');
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-        });
+        const { data: user, error } = await supabaseAdmin
+          .from('users')
+          .select('id, email, name, password_hash')
+          .eq('email', credentials.email as string)
+          .single();
 
-        if (!user) {
+        if (error || !user) {
           throw new Error('Invalid email or password');
         }
 
         const isValidPassword = await bcrypt.compare(
           credentials.password as string,
-          user.passwordHash
+          user.password_hash
         );
 
         if (!isValidPassword) {
@@ -97,19 +96,22 @@ export async function getCurrentUser() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      companyName: true,
-      planType: true,
-      createdAt: true,
-    },
-  });
+  const { data: user } = await supabaseAdmin
+    .from('users')
+    .select('id, email, name, company_name, plan_type, created_at')
+    .eq('id', session.user.id)
+    .single();
 
-  return user;
+  if (!user) return null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    companyName: user.company_name,
+    planType: user.plan_type,
+    createdAt: user.created_at,
+  };
 }
 
 // Helper to require authentication

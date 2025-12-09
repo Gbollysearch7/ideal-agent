@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase';
 import { hashPassword } from '@/lib/auth';
 import { z } from 'zod';
 
@@ -29,9 +29,11 @@ export async function POST(request: NextRequest) {
     const { email, password, name, companyName } = validationResult.data;
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
+    const { data: existingUser } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
 
     if (existingUser) {
       return NextResponse.json(
@@ -43,28 +45,46 @@ export async function POST(request: NextRequest) {
     // Hash password
     const passwordHash = await hashPassword(password);
 
+    // Generate IDs
+    const userId = `u_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+    const apiKey = `ep_${crypto.randomUUID().replace(/-/g, '')}`;
+
     // Create user
-    const user = await prisma.user.create({
-      data: {
+    const { data: user, error } = await supabaseAdmin
+      .from('users')
+      .insert({
+        id: userId,
         email,
-        passwordHash,
+        password_hash: passwordHash,
         name,
-        companyName,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        companyName: true,
-        planType: true,
-        createdAt: true,
-      },
-    });
+        company_name: companyName || null,
+        api_key: apiKey,
+        plan_type: 'FREE',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select('id, email, name, company_name, plan_type, created_at')
+      .single();
+
+    if (error) {
+      console.error('Supabase error:', error);
+      return NextResponse.json(
+        { error: 'Failed to create user' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json(
       {
         message: 'User created successfully',
-        user,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          companyName: user.company_name,
+          planType: user.plan_type,
+          createdAt: user.created_at,
+        },
       },
       { status: 201 }
     );

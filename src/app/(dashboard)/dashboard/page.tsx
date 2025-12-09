@@ -1,6 +1,5 @@
 import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
-import { ContactStatus, EmailSendStatus } from '@prisma/client';
+import { supabaseAdmin } from '@/lib/supabase';
 import {
   Card,
   CardContent,
@@ -20,47 +19,49 @@ import {
 } from 'lucide-react';
 
 async function getDashboardStats(userId: string) {
-  const [
-    totalContacts,
-    totalCampaigns,
-    totalEmailsSent,
-    recentCampaigns,
-  ] = await Promise.all([
-    prisma.contact.count({
-      where: { userId, status: ContactStatus.SUBSCRIBED },
-    }),
-    prisma.campaign.count({
-      where: { userId },
-    }),
-    prisma.emailSend.count({
-      where: {
-        campaign: { userId },
-        status: EmailSendStatus.SENT,
-      },
-    }),
-    prisma.campaign.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        name: true,
-        status: true,
-        createdAt: true,
-        totalRecipients: true,
-      },
-    }),
-  ]);
+  // Get total subscribed contacts
+  const { count: totalContacts } = await supabaseAdmin
+    .from('contacts')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('status', 'SUBSCRIBED');
+
+  // Get total campaigns
+  const { count: totalCampaigns } = await supabaseAdmin
+    .from('campaigns')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId);
+
+  // Get total emails sent
+  const { count: totalEmailsSent } = await supabaseAdmin
+    .from('email_sends')
+    .select('*, campaigns!inner(user_id)', { count: 'exact', head: true })
+    .eq('campaigns.user_id', userId)
+    .eq('status', 'SENT');
+
+  // Get recent campaigns
+  const { data: recentCampaigns } = await supabaseAdmin
+    .from('campaigns')
+    .select('id, name, status, created_at, total_recipients')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(5);
 
   // Calculate open rate (mock data for now)
-  const openRate = totalEmailsSent > 0 ? 24.5 : 0;
+  const openRate = (totalEmailsSent || 0) > 0 ? 24.5 : 0;
 
   return {
-    totalContacts,
-    totalCampaigns,
-    totalEmailsSent,
+    totalContacts: totalContacts || 0,
+    totalCampaigns: totalCampaigns || 0,
+    totalEmailsSent: totalEmailsSent || 0,
     openRate,
-    recentCampaigns,
+    recentCampaigns: (recentCampaigns || []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      createdAt: c.created_at,
+      totalRecipients: c.total_recipients,
+    })),
   };
 }
 
@@ -94,15 +95,13 @@ export default async function DashboardPage() {
             <CardTitle className="text-sm font-medium">
               Total Contacts
             </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <Users className="text-muted-foreground h-4 w-4" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               {stats.totalContacts.toLocaleString()}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Active subscribers
-            </p>
+            <p className="text-muted-foreground text-xs">Active subscribers</p>
           </CardContent>
         </Card>
 
@@ -111,26 +110,24 @@ export default async function DashboardPage() {
             <CardTitle className="text-sm font-medium">
               Total Campaigns
             </CardTitle>
-            <Mail className="h-4 w-4 text-muted-foreground" />
+            <Mail className="text-muted-foreground h-4 w-4" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalCampaigns}</div>
-            <p className="text-xs text-muted-foreground">
-              All time campaigns
-            </p>
+            <p className="text-muted-foreground text-xs">All time campaigns</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Emails Sent</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <TrendingUp className="text-muted-foreground h-4 w-4" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               {stats.totalEmailsSent.toLocaleString()}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Total emails delivered
             </p>
           </CardContent>
@@ -139,13 +136,11 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Open Rate</CardTitle>
-            <MousePointerClick className="h-4 w-4 text-muted-foreground" />
+            <MousePointerClick className="text-muted-foreground h-4 w-4" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.openRate}%</div>
-            <p className="text-xs text-muted-foreground">
-              Average open rate
-            </p>
+            <p className="text-muted-foreground text-xs">Average open rate</p>
           </CardContent>
         </Card>
       </div>
@@ -155,9 +150,7 @@ export default async function DashboardPage() {
         <Card className="lg:col-span-4">
           <CardHeader>
             <CardTitle>Recent Campaigns</CardTitle>
-            <CardDescription>
-              Your latest email campaigns
-            </CardDescription>
+            <CardDescription>Your latest email campaigns</CardDescription>
           </CardHeader>
           <CardContent>
             {stats.recentCampaigns.length > 0 ? (
@@ -169,7 +162,7 @@ export default async function DashboardPage() {
                   >
                     <div className="space-y-1">
                       <p className="font-medium">{campaign.name}</p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         {campaign.totalRecipients} recipients
                       </p>
                     </div>
@@ -198,7 +191,7 @@ export default async function DashboardPage() {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Mail className="mb-4 h-12 w-12 text-muted-foreground" />
+                <Mail className="text-muted-foreground mb-4 h-12 w-12" />
                 <p className="text-muted-foreground">
                   No campaigns yet. Create your first campaign!
                 </p>
@@ -216,9 +209,7 @@ export default async function DashboardPage() {
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>
-              Common tasks to get you started
-            </CardDescription>
+            <CardDescription>Common tasks to get you started</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <Button variant="outline" className="w-full justify-start" asChild>
