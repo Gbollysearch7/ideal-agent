@@ -1,0 +1,411 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum PlanType {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum ContactStatus {
+  SUBSCRIBED
+  UNSUBSCRIBED
+  BOUNCED
+  COMPLAINED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  PAUSED
+  CANCELLED
+}
+
+enum EmailSendStatus {
+  PENDING
+  QUEUED
+  SENT
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  OPENED
+  CLICKED
+}
+
+enum EmailEventType {
+  SENT
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  OPENED
+  CLICKED
+}
+
+enum AutomationTriggerType {
+  CONTACT_ADDED
+  TAG_ADDED
+  DATE_BASED
+  WEBHOOK
+}
+
+enum AIContextType {
+  CAMPAIGN_CREATION
+  TEMPLATE_EDITING
+  ANALYTICS_REVIEW
+  GENERAL
+}
+
+// ============================================
+// USERS
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  name          String
+  companyName   String?   @map("company_name")
+  planType      PlanType  @default(FREE) @map("plan_type")
+  apiKey        String    @unique @default(cuid()) @map("api_key")
+  resendApiKey  String?   @map("resend_api_key") // Encrypted
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  contacts        Contact[]
+  lists           List[]
+  emailTemplates  EmailTemplate[]
+  campaigns       Campaign[]
+  emailSends      EmailSend[]
+  automations     Automation[]
+  aiConversations AIConversation[]
+  webhooks        Webhook[]
+  userApiKeys     ApiKey[]
+  accounts        Account[]
+  sessions        Session[]
+
+  @@map("users")
+}
+
+// ============================================
+// NEXTAUTH TABLES
+// ============================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================
+// CONTACTS
+// ============================================
+
+model Contact {
+  id              String        @id @default(cuid())
+  userId          String        @map("user_id")
+  email           String
+  firstName       String?       @map("first_name")
+  lastName        String?       @map("last_name")
+  status          ContactStatus @default(SUBSCRIBED)
+  metadata        Json?         @default("{}")
+  tags            String[]      @default([])
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  lastEmailSentAt DateTime?     @map("last_email_sent_at")
+
+  // Relations
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lists      ListContact[]
+  emailSends EmailSend[]
+
+  @@unique([userId, email])
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([email])
+  @@map("contacts")
+}
+
+// ============================================
+// LISTS
+// ============================================
+
+model List {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  name         String
+  description  String?  @db.Text
+  contactCount Int      @default(0) @map("contact_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contacts ListContact[]
+
+  @@index([userId])
+  @@map("lists")
+}
+
+model ListContact {
+  id        String   @id @default(cuid())
+  listId    String   @map("list_id")
+  contactId String   @map("contact_id")
+  addedAt   DateTime @default(now()) @map("added_at")
+
+  // Relations
+  list    List    @relation(fields: [listId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, contactId])
+  @@index([listId])
+  @@index([contactId])
+  @@map("list_contacts")
+}
+
+// ============================================
+// EMAIL TEMPLATES
+// ============================================
+
+model EmailTemplate {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  name         String
+  subject      String
+  htmlContent  String   @db.Text @map("html_content")
+  textContent  String?  @db.Text @map("text_content")
+  previewText  String?  @map("preview_text")
+  thumbnailUrl String?  @map("thumbnail_url")
+  isDraft      Boolean  @default(true) @map("is_draft")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@index([userId])
+  @@map("email_templates")
+}
+
+// ============================================
+// CAMPAIGNS
+// ============================================
+
+model Campaign {
+  id              String         @id @default(cuid())
+  userId          String         @map("user_id")
+  name            String
+  subject         String
+  fromName        String         @map("from_name")
+  fromEmail       String         @map("from_email")
+  replyTo         String?        @map("reply_to")
+  templateId      String?        @map("template_id")
+  htmlContent     String         @db.Text @map("html_content")
+  textContent     String?        @db.Text @map("text_content")
+  status          CampaignStatus @default(DRAFT)
+  listIds         String[]       @default([]) @map("list_ids")
+  segmentFilter   Json?          @map("segment_filter")
+  scheduledAt     DateTime?      @map("scheduled_at")
+  startedAt       DateTime?      @map("started_at")
+  completedAt     DateTime?      @map("completed_at")
+  totalRecipients Int            @default(0) @map("total_recipients")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template   EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  emailSends EmailSend[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("campaigns")
+}
+
+// ============================================
+// EMAIL SENDS
+// ============================================
+
+model EmailSend {
+  id            String          @id @default(cuid())
+  campaignId    String?         @map("campaign_id")
+  userId        String          @map("user_id")
+  contactId     String          @map("contact_id")
+  resendEmailId String?         @map("resend_email_id")
+  status        EmailSendStatus @default(QUEUED)
+  sentAt        DateTime?       @map("sent_at")
+  deliveredAt   DateTime?       @map("delivered_at")
+  openedAt      DateTime?       @map("opened_at")
+  clickedAt     DateTime?       @map("clicked_at")
+  bouncedAt     DateTime?       @map("bounced_at")
+  bounceReason  String?         @db.Text @map("bounce_reason")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contact  Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  events   EmailEvent[]
+
+  @@index([campaignId])
+  @@index([contactId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([resendEmailId])
+  @@map("email_sends")
+}
+
+// ============================================
+// EMAIL EVENTS
+// ============================================
+
+model EmailEvent {
+  id          String         @id @default(cuid())
+  emailSendId String         @map("email_send_id")
+  eventType   EmailEventType @map("event_type")
+  eventData   Json?          @default("{}") @map("event_data")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  emailSend EmailSend @relation(fields: [emailSendId], references: [id], onDelete: Cascade)
+
+  @@index([emailSendId])
+  @@index([eventType])
+  @@map("email_events")
+}
+
+// ============================================
+// AUTOMATIONS
+// ============================================
+
+model Automation {
+  id            String                 @id @default(cuid())
+  userId        String                 @map("user_id")
+  name          String
+  triggerType   AutomationTriggerType  @map("trigger_type")
+  triggerConfig Json?                  @default("{}") @map("trigger_config")
+  workflowSteps Json?                  @default("[]") @map("workflow_steps")
+  isActive      Boolean                @default(false) @map("is_active")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isActive])
+  @@map("automations")
+}
+
+// ============================================
+// AI CONVERSATIONS
+// ============================================
+
+model AIConversation {
+  id          String        @id @default(cuid())
+  userId      String        @map("user_id")
+  contextType AIContextType @map("context_type")
+  contextId   String?       @map("context_id")
+  messages    Json          @default("[]")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("ai_conversations")
+}
+
+// ============================================
+// WEBHOOKS
+// ============================================
+
+model Webhook {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  url       String
+  events    String[] @default([])
+  isActive  Boolean  @default(true) @map("is_active")
+  secret    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("webhooks")
+}
+
+// ============================================
+// API KEYS
+// ============================================
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  name       String
+  keyHash    String    @map("key_hash")
+  keyPreview String    @map("key_preview") // Last 4 chars
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
