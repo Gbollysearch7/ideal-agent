@@ -7,16 +7,8 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Mail, Lock, User, Building, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, Building, Loader2, ArrowRight } from 'lucide-react';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -99,24 +91,35 @@ export default function RegisterPage() {
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
-        <CardDescription>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="space-y-2 text-center">
+        <h1 className="text-3xl font-medium tracking-tight">
+          Create an account
+        </h1>
+        <p className="text-muted-foreground">
           Enter your details to get started with email marketing
-        </CardDescription>
-      </CardHeader>
-      <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+        </p>
+      </div>
+
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {error && (
+          <Alert
+            variant="destructive"
+            className="border-destructive/50 bg-destructive/10"
+          >
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Full Name</Label>
+            <Label htmlFor="name" className="text-sm font-medium">
+              Full Name
+            </Label>
             <div className="relative">
-              <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <User className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
               <Input
                 id="name"
                 name="name"
@@ -124,16 +127,19 @@ export default function RegisterPage() {
                 placeholder="John Doe"
                 value={formData.name}
                 onChange={handleChange}
-                className="pl-10"
+                className="h-12 pl-10"
                 required
                 disabled={isLoading}
               />
             </div>
           </div>
+
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-sm font-medium">
+              Email
+            </Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Mail className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
               <Input
                 id="email"
                 name="email"
@@ -141,16 +147,22 @@ export default function RegisterPage() {
                 placeholder="name@example.com"
                 value={formData.email}
                 onChange={handleChange}
-                className="pl-10"
+                className="h-12 pl-10"
                 required
                 disabled={isLoading}
               />
             </div>
           </div>
+
           <div className="space-y-2">
-            <Label htmlFor="companyName">Company Name (Optional)</Label>
+            <Label htmlFor="companyName" className="text-sm font-medium">
+              Company Name{' '}
+              <span className="text-muted-foreground font-normal">
+                (Optional)
+              </span>
+            </Label>
             <div className="relative">
-              <Building className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Building className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
               <Input
                 id="companyName"
                 name="companyName"
@@ -158,15 +170,18 @@ export default function RegisterPage() {
                 placeholder="Acme Inc."
                 value={formData.companyName}
                 onChange={handleChange}
-                className="pl-10"
+                className="h-12 pl-10"
                 disabled={isLoading}
               />
             </div>
           </div>
+
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password" className="text-sm font-medium">
+              Password
+            </Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Lock className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
               <Input
                 id="password"
                 name="password"
@@ -174,20 +189,23 @@ export default function RegisterPage() {
                 placeholder="Create a password"
                 value={formData.password}
                 onChange={handleChange}
-                className="pl-10"
+                className="h-12 pl-10"
                 required
                 minLength={8}
                 disabled={isLoading}
               />
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Must be at least 8 characters
             </p>
           </div>
+
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <Label htmlFor="confirmPassword" className="text-sm font-medium">
+              Confirm Password
+            </Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Lock className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
               <Input
                 id="confirmPassword"
                 name="confirmPassword"
@@ -195,35 +213,43 @@ export default function RegisterPage() {
                 placeholder="Confirm your password"
                 value={formData.confirmPassword}
                 onChange={handleChange}
-                className="pl-10"
+                className="h-12 pl-10"
                 required
                 disabled={isLoading}
               />
             </div>
           </div>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating account...
-              </>
-            ) : (
-              'Create account'
-            )}
-          </Button>
-          <p className="text-center text-sm text-muted-foreground">
-            Already have an account?{' '}
-            <Link
-              href="/login"
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              Sign in
-            </Link>
-          </p>
-        </CardFooter>
+        </div>
+
+        <Button
+          type="submit"
+          className="h-12 w-full text-base"
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Creating account...
+            </>
+          ) : (
+            <>
+              Create account
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </>
+          )}
+        </Button>
       </form>
-    </Card>
+
+      {/* Footer */}
+      <p className="text-muted-foreground text-center text-sm">
+        Already have an account?{' '}
+        <Link
+          href="/login"
+          className="text-foreground font-medium underline-offset-4 transition-colors hover:underline"
+        >
+          Sign in
+        </Link>
+      </p>
+    </div>
   );
 }

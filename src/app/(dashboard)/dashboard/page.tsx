@@ -16,6 +16,9 @@ import {
   TrendingUp,
   Plus,
   ArrowRight,
+  Sparkles,
+  FileText,
+  Settings,
 } from 'lucide-react';
 
 async function getDashboardStats(userId: string) {
@@ -72,15 +75,16 @@ export default async function DashboardPage() {
   const stats = await getDashboardStats(session.user.id);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Welcome back! Here&apos;s an overview of your email marketing.
+    <div className="space-y-8">
+      {/* Hero Section */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-medium tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground text-lg">
+            Welcome back. Here&apos;s your email marketing overview.
           </p>
         </div>
-        <Button asChild>
+        <Button asChild size="lg" className="w-full md:w-auto">
           <Link href="/dashboard/campaigns/new">
             <Plus className="mr-2 h-4 w-4" />
             New Campaign
@@ -88,114 +92,148 @@ export default async function DashboardPage() {
         </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+      {/* Stats Cards - Chronicle Style */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="group relative overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-muted-foreground text-sm font-medium">
               Total Contacts
             </CardTitle>
-            <Users className="text-muted-foreground h-4 w-4" />
+            <div className="bg-foreground/5 rounded-lg p-2">
+              <Users className="text-foreground/70 h-4 w-4" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-3xl font-medium tracking-tight">
               {stats.totalContacts.toLocaleString()}
             </div>
-            <p className="text-muted-foreground text-xs">Active subscribers</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Campaigns
-            </CardTitle>
-            <Mail className="text-muted-foreground h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalCampaigns}</div>
-            <p className="text-muted-foreground text-xs">All time campaigns</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Emails Sent</CardTitle>
-            <TrendingUp className="text-muted-foreground h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {stats.totalEmailsSent.toLocaleString()}
-            </div>
-            <p className="text-muted-foreground text-xs">
-              Total emails delivered
+            <p className="text-muted-foreground mt-1 text-sm">
+              Active subscribers
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="group relative overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Open Rate</CardTitle>
-            <MousePointerClick className="text-muted-foreground h-4 w-4" />
+            <CardTitle className="text-muted-foreground text-sm font-medium">
+              Total Campaigns
+            </CardTitle>
+            <div className="bg-foreground/5 rounded-lg p-2">
+              <Mail className="text-foreground/70 h-4 w-4" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.openRate}%</div>
-            <p className="text-muted-foreground text-xs">Average open rate</p>
+            <div className="text-3xl font-medium tracking-tight">
+              {stats.totalCampaigns}
+            </div>
+            <p className="text-muted-foreground mt-1 text-sm">All time</p>
+          </CardContent>
+        </Card>
+
+        <Card className="group relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-muted-foreground text-sm font-medium">
+              Emails Sent
+            </CardTitle>
+            <div className="bg-foreground/5 rounded-lg p-2">
+              <TrendingUp className="text-foreground/70 h-4 w-4" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-medium tracking-tight">
+              {stats.totalEmailsSent.toLocaleString()}
+            </div>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Total delivered
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="group relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-muted-foreground text-sm font-medium">
+              Open Rate
+            </CardTitle>
+            <div className="bg-foreground/5 rounded-lg p-2">
+              <MousePointerClick className="text-foreground/70 h-4 w-4" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-medium tracking-tight">
+              {stats.openRate}%
+            </div>
+            <p className="text-muted-foreground mt-1 text-sm">Average rate</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Quick Actions & Recent Campaigns */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+      {/* Main Content Grid */}
+      <div className="grid gap-6 lg:grid-cols-7">
+        {/* Recent Campaigns */}
         <Card className="lg:col-span-4">
-          <CardHeader>
-            <CardTitle>Recent Campaigns</CardTitle>
-            <CardDescription>Your latest email campaigns</CardDescription>
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-xl font-medium tracking-tight">
+                  Recent Campaigns
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Your latest email campaigns
+                </CardDescription>
+              </div>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/dashboard/campaigns">
+                  View all
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {stats.recentCampaigns.length > 0 ? (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {stats.recentCampaigns.map((campaign) => (
-                  <div
+                  <Link
                     key={campaign.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
+                    href={`/dashboard/campaigns/${campaign.id}`}
+                    className="border-border/50 hover:bg-accent hover:border-border flex items-center justify-between rounded-lg border p-4 transition-all duration-200"
                   >
                     <div className="space-y-1">
-                      <p className="font-medium">{campaign.name}</p>
+                      <p className="font-medium tracking-tight">
+                        {campaign.name}
+                      </p>
                       <p className="text-muted-foreground text-sm">
                         {campaign.totalRecipients} recipients
                       </p>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                       <span
-                        className={`rounded-full px-2 py-1 text-xs font-medium ${
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                           campaign.status === 'SENT'
-                            ? 'bg-green-100 text-green-700'
+                            ? 'bg-success/10 text-success'
                             : campaign.status === 'DRAFT'
-                              ? 'bg-gray-100 text-gray-700'
+                              ? 'bg-muted text-muted-foreground'
                               : campaign.status === 'SENDING'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-yellow-100 text-yellow-700'
+                                ? 'bg-primary/10 text-primary'
+                                : 'bg-warning/10 text-warning'
                         }`}
                       >
                         {campaign.status}
                       </span>
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/dashboard/campaigns/${campaign.id}`}>
-                          <ArrowRight className="h-4 w-4" />
-                        </Link>
-                      </Button>
+                      <ArrowRight className="text-muted-foreground h-4 w-4" />
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Mail className="text-muted-foreground mb-4 h-12 w-12" />
-                <p className="text-muted-foreground">
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="bg-muted mb-4 rounded-full p-4">
+                  <Mail className="text-muted-foreground h-8 w-8" />
+                </div>
+                <p className="text-muted-foreground mb-4">
                   No campaigns yet. Create your first campaign!
                 </p>
-                <Button asChild className="mt-4">
+                <Button asChild>
                   <Link href="/dashboard/campaigns/new">
                     <Plus className="mr-2 h-4 w-4" />
                     Create Campaign
@@ -206,34 +244,63 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
+        {/* Quick Actions */}
         <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Common tasks to get you started</CardDescription>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl font-medium tracking-tight">
+              Quick Actions
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Get started with common tasks
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <Button variant="outline" className="w-full justify-start" asChild>
+          <CardContent className="space-y-2">
+            <Button
+              variant="outline"
+              className="h-12 w-full justify-start px-4"
+              asChild
+            >
               <Link href="/dashboard/contacts/import">
-                <Users className="mr-2 h-4 w-4" />
+                <div className="bg-foreground/5 mr-3 rounded-lg p-1.5">
+                  <Users className="h-4 w-4" />
+                </div>
                 Import Contacts
               </Link>
             </Button>
-            <Button variant="outline" className="w-full justify-start" asChild>
+            <Button
+              variant="outline"
+              className="h-12 w-full justify-start px-4"
+              asChild
+            >
               <Link href="/dashboard/templates/new">
-                <Mail className="mr-2 h-4 w-4" />
+                <div className="bg-foreground/5 mr-3 rounded-lg p-1.5">
+                  <FileText className="h-4 w-4" />
+                </div>
                 Create Template
               </Link>
             </Button>
-            <Button variant="outline" className="w-full justify-start" asChild>
-              <Link href="/dashboard/lists">
-                <Users className="mr-2 h-4 w-4" />
-                Manage Lists
+            <Button
+              variant="outline"
+              className="h-12 w-full justify-start px-4"
+              asChild
+            >
+              <Link href="/dashboard/ai-assistant">
+                <div className="bg-foreground/5 mr-3 rounded-lg p-1.5">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                AI Assistant
               </Link>
             </Button>
-            <Button variant="outline" className="w-full justify-start" asChild>
+            <Button
+              variant="outline"
+              className="h-12 w-full justify-start px-4"
+              asChild
+            >
               <Link href="/dashboard/settings">
-                <TrendingUp className="mr-2 h-4 w-4" />
-                Configure Resend
+                <div className="bg-foreground/5 mr-3 rounded-lg p-1.5">
+                  <Settings className="h-4 w-4" />
+                </div>
+                Configure Settings
               </Link>
             </Button>
           </CardContent>

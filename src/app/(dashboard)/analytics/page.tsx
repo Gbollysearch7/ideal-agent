@@ -58,7 +58,12 @@ interface AnalyticsData {
     complaintRate: number;
   };
   charts: {
-    dailyStats: { date: string; sent: number; opened: number; clicked: number }[];
+    dailyStats: {
+      date: string;
+      sent: number;
+      opened: number;
+      clicked: number;
+    }[];
     contactGrowth: { date: string; count: number }[];
   };
   recentCampaigns: {
@@ -98,16 +103,16 @@ function StatCard({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
+        <Icon className="text-muted-foreground h-4 w-4" />
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p className="text-muted-foreground text-xs">{description}</p>
         )}
         {trend && (
           <div
-            className={`text-xs flex items-center gap-1 mt-1 ${
+            className={`mt-1 flex items-center gap-1 text-xs ${
               trend.positive ? 'text-green-600' : 'text-red-600'
             }`}
           >
@@ -153,7 +158,7 @@ export default function AnalyticsPage() {
         <div className="flex items-center justify-between">
           <div>
             <Skeleton className="h-8 w-[150px]" />
-            <Skeleton className="h-4 w-[250px] mt-2" />
+            <Skeleton className="mt-2 h-4 w-[250px]" />
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -174,7 +179,7 @@ export default function AnalyticsPage() {
 
   if (!data) {
     return (
-      <div className="flex items-center justify-center h-[400px]">
+      <div className="flex h-[400px] items-center justify-center">
         <p className="text-muted-foreground">No analytics data available</p>
       </div>
     );
@@ -185,8 +190,8 @@ export default function AnalyticsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Analytics</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-4xl font-medium tracking-tight">Analytics</h1>
+          <p className="text-muted-foreground text-lg">
             Track your email marketing performance
           </p>
         </div>
@@ -267,7 +272,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             {data.recentCampaigns.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
+              <p className="text-muted-foreground py-8 text-center text-sm">
                 No campaigns sent yet
               </p>
             ) : (
@@ -285,11 +290,13 @@ export default function AnalyticsPage() {
                     <TableRow key={campaign.id}>
                       <TableCell>
                         <div>
-                          <div className="font-medium truncate max-w-[150px]">
+                          <div className="max-w-[150px] truncate font-medium">
                             {campaign.name}
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {new Date(campaign.completedAt).toLocaleDateString()}
+                          <div className="text-muted-foreground text-xs">
+                            {new Date(
+                              campaign.completedAt
+                            ).toLocaleDateString()}
                           </div>
                         </div>
                       </TableCell>
@@ -334,20 +341,20 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             {data.topLists.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
+              <p className="text-muted-foreground py-8 text-center text-sm">
                 No lists created yet
               </p>
             ) : (
               <div className="space-y-4">
                 {data.topLists.map((list, index) => (
                   <div key={list.id} className="flex items-center gap-4">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-medium">
+                    <div className="bg-primary/10 text-primary flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium">
                       {index + 1}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{list.name}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{list.name}</p>
                     </div>
-                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                    <div className="text-muted-foreground flex items-center gap-1 text-sm">
                       <Users className="h-4 w-4" />
                       {list.contactCount.toLocaleString()}
                     </div>
@@ -369,11 +376,11 @@ export default function AnalyticsPage() {
         </CardHeader>
         <CardContent>
           {data.charts.dailyStats.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-16">
+            <p className="text-muted-foreground py-16 text-center text-sm">
               No email activity data available for this period
             </p>
           ) : (
-            <div className="h-[300px] flex items-end justify-between gap-1 pt-4">
+            <div className="flex h-[300px] items-end justify-between gap-1 pt-4">
               {data.charts.dailyStats.slice(-14).map((stat, index) => {
                 const maxSent = Math.max(
                   ...data.charts.dailyStats.map((s) => s.sent)
@@ -383,27 +390,25 @@ export default function AnalyticsPage() {
                 return (
                   <div
                     key={index}
-                    className="flex-1 flex flex-col items-center gap-1"
+                    className="flex flex-1 flex-col items-center gap-1"
                   >
                     <div
-                      className="w-full bg-primary/20 rounded-t relative group cursor-pointer"
+                      className="bg-primary/20 group relative w-full cursor-pointer rounded-t"
                       style={{ height: `${Math.max(height, 4)}%` }}
                     >
                       <div
-                        className="absolute bottom-0 left-0 right-0 bg-primary rounded-t"
+                        className="bg-primary absolute right-0 bottom-0 left-0 rounded-t"
                         style={{
                           height: `${
-                            stat.sent > 0
-                              ? (stat.opened / stat.sent) * 100
-                              : 0
+                            stat.sent > 0 ? (stat.opened / stat.sent) * 100 : 0
                           }%`,
                         }}
                       />
-                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover border rounded px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                      <div className="bg-popover absolute -top-8 left-1/2 z-10 -translate-x-1/2 rounded border px-2 py-1 text-xs whitespace-nowrap opacity-0 transition-opacity group-hover:opacity-100">
                         {stat.sent} sent, {stat.opened} opened
                       </div>
                     </div>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-muted-foreground text-xs">
                       {stat.date.split(' ')[1]}
                     </span>
                   </div>

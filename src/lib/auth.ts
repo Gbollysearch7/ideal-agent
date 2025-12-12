@@ -3,6 +3,21 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { supabaseAdmin } from './supabase';
 
+// Development test user credentials
+const DEV_TEST_EMAIL = 'dev@test.com';
+const DEV_TEST_PASSWORD = 'devtest123';
+const DEV_TEST_USER = {
+  id: 'dev_test_user_001',
+  email: DEV_TEST_EMAIL,
+  name: 'Dev Tester',
+  image: null,
+};
+
+// Check if dev bypass is enabled
+const isDevBypassEnabled =
+  process.env.NODE_ENV === 'development' &&
+  process.env.ENABLE_DEV_BYPASS === 'true';
+
 export const authConfig: NextAuthConfig = {
   session: {
     strategy: 'jwt',
@@ -23,6 +38,21 @@ export const authConfig: NextAuthConfig = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
           throw new Error('Email and password are required');
+        }
+
+        // Dev bypass: Allow test login in development mode
+        if (isDevBypassEnabled) {
+          if (
+            credentials.email === DEV_TEST_EMAIL &&
+            credentials.password === DEV_TEST_PASSWORD
+          ) {
+            console.log('🔧 DEV BYPASS: Logging in as test user');
+
+            // Ensure dev user exists in database
+            await ensureDevUserExists();
+
+            return DEV_TEST_USER;
+          }
         }
 
         const { data: user, error } = await supabaseAdmin
@@ -121,6 +151,30 @@ export async function requireAuth() {
     throw new Error('Unauthorized');
   }
   return user;
+}
+
+// Ensure dev test user exists in database
+async function ensureDevUserExists() {
+  const { data: existingUser } = await supabaseAdmin
+    .from('users')
+    .select('id')
+    .eq('id', DEV_TEST_USER.id)
+    .single();
+
+  if (!existingUser) {
+    const hashedPassword = await bcrypt.hash(DEV_TEST_PASSWORD, 12);
+    await supabaseAdmin.from('users').insert({
+      id: DEV_TEST_USER.id,
+      email: DEV_TEST_EMAIL,
+      name: DEV_TEST_USER.name,
+      password_hash: hashedPassword,
+      company_name: 'Dev Test Company',
+      plan_type: 'PRO',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    console.log('🔧 DEV BYPASS: Created dev test user in database');
+  }
 }
 
 // Password hashing utility

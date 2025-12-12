@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import {
   Bot,
   Sparkles,
@@ -36,7 +37,11 @@ import { toast } from 'sonner';
 
 interface AIAssistantProps {
   onInsertSubject?: (subject: string) => void;
-  onInsertContent?: (content: { subject: string; html: string; text: string }) => void;
+  onInsertContent?: (content: {
+    subject: string;
+    html: string;
+    text: string;
+  }) => void;
   initialContent?: string;
 }
 
@@ -66,7 +71,9 @@ export function AIAssistant({
   } | null>(null);
 
   // Analysis state
-  const [contentToAnalyze, setContentToAnalyze] = useState(initialContent || '');
+  const [contentToAnalyze, setContentToAnalyze] = useState(
+    initialContent || ''
+  );
   const [analysis, setAnalysis] = useState<{
     score: number;
     suggestions: string[];
@@ -173,11 +180,55 @@ export function AIAssistant({
     toast.success('Copied to clipboard');
   };
 
+  // Sanitize HTML content to prevent XSS attacks
+  const sanitizedHtml = useMemo(() => {
+    if (!generatedContent?.html) return '';
+    return DOMPurify.sanitize(generatedContent.html, {
+      ALLOWED_TAGS: [
+        'p',
+        'br',
+        'strong',
+        'em',
+        'u',
+        'h1',
+        'h2',
+        'h3',
+        'h4',
+        'h5',
+        'h6',
+        'ul',
+        'ol',
+        'li',
+        'a',
+        'span',
+        'div',
+        'img',
+        'table',
+        'tr',
+        'td',
+        'th',
+        'thead',
+        'tbody',
+      ],
+      ALLOWED_ATTR: [
+        'href',
+        'src',
+        'alt',
+        'title',
+        'class',
+        'style',
+        'target',
+        'rel',
+      ],
+      ALLOW_DATA_ATTR: false,
+    });
+  }, [generatedContent?.html]);
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div className="bg-primary/10 text-primary flex h-8 w-8 items-center justify-center rounded-lg">
             <Bot className="h-4 w-4" />
           </div>
           <div>
@@ -246,7 +297,7 @@ export function AIAssistant({
                 {generatedSubjects.map((subject, index) => (
                   <div
                     key={index}
-                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50"
+                    className="hover:bg-muted/50 flex items-center justify-between rounded-lg border p-3"
                   >
                     <span className="text-sm">{subject}</span>
                     <div className="flex gap-1">
@@ -337,14 +388,14 @@ export function AIAssistant({
             {generatedContent && (
               <div className="space-y-3">
                 <div className="rounded-lg border p-3">
-                  <p className="text-sm font-medium mb-1">Subject:</p>
+                  <p className="mb-1 text-sm font-medium">Subject:</p>
                   <p className="text-sm">{generatedContent.subject}</p>
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-sm font-medium mb-1">Preview:</p>
+                  <p className="mb-1 text-sm font-medium">Preview:</p>
                   <div
-                    className="text-sm prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: generatedContent.html }}
+                    className="prose prose-sm max-w-none text-sm"
+                    dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
                   />
                 </div>
                 <div className="flex gap-2">
@@ -408,8 +459,8 @@ export function AIAssistant({
                         analysis.spamRisk === 'low'
                           ? 'default'
                           : analysis.spamRisk === 'medium'
-                          ? 'secondary'
-                          : 'destructive'
+                            ? 'secondary'
+                            : 'destructive'
                       }
                     >
                       {analysis.spamRisk}
@@ -417,19 +468,19 @@ export function AIAssistant({
                   </div>
                 </div>
                 <div>
-                  <p className="text-sm font-medium mb-1">Readability</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="mb-1 text-sm font-medium">Readability</p>
+                  <p className="text-muted-foreground text-sm">
                     {analysis.readabilityLevel}
                   </p>
                 </div>
                 {analysis.suggestions.length > 0 && (
                   <div>
-                    <p className="text-sm font-medium mb-2">Suggestions</p>
+                    <p className="mb-2 text-sm font-medium">Suggestions</p>
                     <ul className="space-y-1">
                       {analysis.suggestions.map((suggestion, index) => (
                         <li
                           key={index}
-                          className="text-sm text-muted-foreground flex items-start gap-2"
+                          className="text-muted-foreground flex items-start gap-2 text-sm"
                         >
                           <span className="text-primary">•</span>
                           {suggestion}

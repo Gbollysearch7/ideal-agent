@@ -19,19 +19,17 @@ import {
   FormMessage,
   FormDescription,
 } from '@/components/ui/form';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
 const templateSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name is too long'),
-  subject: z.string().min(1, 'Subject is required').max(200, 'Subject is too long'),
+  subject: z
+    .string()
+    .min(1, 'Subject is required')
+    .max(200, 'Subject is too long'),
   htmlContent: z.string().min(1, 'HTML content is required'),
   textContent: z.string().optional(),
   category: z.string().max(50).optional(),
@@ -151,20 +149,19 @@ export default function NewTemplatePage() {
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/templates">
+          <Link href="/dashboard/templates">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">Create Template</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-4xl font-medium tracking-tight">
+            Create Template
+          </h1>
+          <p className="text-muted-foreground text-sm">
             Design your email template with HTML
           </p>
         </div>
-        <Button
-          onClick={form.handleSubmit(onSubmit)}
-          disabled={loading}
-        >
+        <Button onClick={form.handleSubmit(onSubmit)} disabled={loading}>
           {loading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
@@ -210,7 +207,8 @@ export default function NewTemplatePage() {
                           />
                         </FormControl>
                         <FormDescription>
-                          Use &#123;&#123;variable&#125;&#125; for personalization
+                          Use &#123;&#123;variable&#125;&#125; for
+                          personalization
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -247,8 +245,9 @@ export default function NewTemplatePage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No variables detected. Use &#123;&#123;variableName&#125;&#125; syntax.
+                    <p className="text-muted-foreground text-sm">
+                      No variables detected. Use
+                      &#123;&#123;variableName&#125;&#125; syntax.
                     </p>
                   )}
                 </CardContent>
@@ -261,7 +260,9 @@ export default function NewTemplatePage() {
                 <CardHeader className="pb-2">
                   <Tabs
                     value={previewTab}
-                    onValueChange={(v) => setPreviewTab(v as 'editor' | 'preview')}
+                    onValueChange={(v) =>
+                      setPreviewTab(v as 'editor' | 'preview')
+                    }
                   >
                     <TabsList>
                       <TabsTrigger value="editor">
@@ -285,7 +286,7 @@ export default function NewTemplatePage() {
                           <FormItem>
                             <FormControl>
                               <Textarea
-                                className="font-mono text-sm min-h-[500px] resize-none"
+                                className="min-h-[500px] resize-none font-mono text-sm"
                                 placeholder="Enter your HTML content here..."
                                 {...field}
                               />
@@ -296,10 +297,10 @@ export default function NewTemplatePage() {
                       />
                     </TabsContent>
                     <TabsContent value="preview" className="mt-0">
-                      <div className="border rounded-lg min-h-[500px] bg-white">
+                      <div className="min-h-[500px] rounded-lg border bg-white">
                         <iframe
                           srcDoc={htmlContent}
-                          className="w-full h-[500px] rounded-lg"
+                          className="h-[500px] w-full rounded-lg"
                           title="Email Preview"
                           sandbox="allow-same-origin"
                         />
@@ -330,7 +331,8 @@ export default function NewTemplatePage() {
                       />
                     </FormControl>
                     <FormDescription>
-                      This version is shown to recipients who can&apos;t view HTML emails
+                      This version is shown to recipients who can&apos;t view
+                      HTML emails
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

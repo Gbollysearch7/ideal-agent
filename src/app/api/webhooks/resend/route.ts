@@ -1,7 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Webhook } from 'svix';
-import { prisma } from '@/lib/prisma';
-import { EmailSendStatus, ContactStatus, EmailEventType } from '@prisma/client';
+import { supabaseAdmin } from '@/lib/supabase';
+
+// Status and event type enums (replaces Prisma imports)
+const EmailSendStatus = {
+  PENDING: 'PENDING',
+  SENT: 'SENT',
+  DELIVERED: 'DELIVERED',
+  BOUNCED: 'BOUNCED',
+  COMPLAINED: 'COMPLAINED',
+} as const;
+
+const ContactStatus = {
+  SUBSCRIBED: 'SUBSCRIBED',
+  UNSUBSCRIBED: 'UNSUBSCRIBED',
+  BOUNCED: 'BOUNCED',
+  COMPLAINED: 'COMPLAINED',
+} as const;
+
+const EmailEventType = {
+  SENT: 'SENT',
+  DELIVERED: 'DELIVERED',
+  OPENED: 'OPENED',
+  CLICKED: 'CLICKED',
+  BOUNCED: 'BOUNCED',
+  COMPLAINED: 'COMPLAINED',
+} as const;
 
 interface ResendWebhookEvent {
   type: string;
@@ -102,26 +126,29 @@ export async function POST(request: NextRequest) {
 async function handleEmailSent(event: ResendWebhookEvent) {
   const { email_id } = event.data;
 
-  const emailSend = await prisma.emailSend.findFirst({
-    where: { resendEmailId: email_id },
-  });
+  const { data: emailSend } = await supabaseAdmin
+    .from('email_sends')
+    .select('id')
+    .eq('resend_email_id', email_id)
+    .single();
 
   if (emailSend) {
-    await prisma.emailSend.update({
-      where: { id: emailSend.id },
-      data: {
+    await supabaseAdmin
+      .from('email_sends')
+      .update({
         status: EmailSendStatus.SENT,
-        sentAt: new Date(),
-      },
-    });
+        sent_at: new Date().toISOString(),
+      })
+      .eq('id', emailSend.id);
 
     // Create event record
-    await prisma.emailEvent.create({
-      data: {
-        emailSendId: emailSend.id,
-        eventType: EmailEventType.SENT,
-        eventData: { timestamp: new Date().toISOString() },
-      },
+    const eventId = `evt_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+    await supabaseAdmin.from('email_events').insert({
+      id: eventId,
+      email_send_id: emailSend.id,
+      event_type: EmailEventType.SENT,
+      event_data: { timestamp: new Date().toISOString() },
+      created_at: new Date().toISOString(),
     });
   }
 }
@@ -129,26 +156,29 @@ async function handleEmailSent(event: ResendWebhookEvent) {
 async function handleEmailDelivered(event: ResendWebhookEvent) {
   const { email_id } = event.data;
 
-  const emailSend = await prisma.emailSend.findFirst({
-    where: { resendEmailId: email_id },
-  });
+  const { data: emailSend } = await supabaseAdmin
+    .from('email_sends')
+    .select('id')
+    .eq('resend_email_id', email_id)
+    .single();
 
   if (emailSend) {
-    await prisma.emailSend.update({
-      where: { id: emailSend.id },
-      data: {
+    await supabaseAdmin
+      .from('email_sends')
+      .update({
         status: EmailSendStatus.DELIVERED,
-        deliveredAt: new Date(),
-      },
-    });
+        delivered_at: new Date().toISOString(),
+      })
+      .eq('id', emailSend.id);
 
     // Create event record
-    await prisma.emailEvent.create({
-      data: {
-        emailSendId: emailSend.id,
-        eventType: EmailEventType.DELIVERED,
-        eventData: { timestamp: new Date().toISOString() },
-      },
+    const eventId = `evt_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+    await supabaseAdmin.from('email_events').insert({
+      id: eventId,
+      email_send_id: emailSend.id,
+      event_type: EmailEventType.DELIVERED,
+      event_data: { timestamp: new Date().toISOString() },
+      created_at: new Date().toISOString(),
     });
   }
 }
@@ -156,28 +186,31 @@ async function handleEmailDelivered(event: ResendWebhookEvent) {
 async function handleEmailOpened(event: ResendWebhookEvent) {
   const { email_id } = event.data;
 
-  const emailSend = await prisma.emailSend.findFirst({
-    where: { resendEmailId: email_id },
-  });
+  const { data: emailSend } = await supabaseAdmin
+    .from('email_sends')
+    .select('id, opened_at')
+    .eq('resend_email_id', email_id)
+    .single();
 
   if (emailSend) {
     // Only update openedAt if not already set (first open)
-    if (!emailSend.openedAt) {
-      await prisma.emailSend.update({
-        where: { id: emailSend.id },
-        data: {
-          openedAt: new Date(),
-        },
-      });
+    if (!emailSend.opened_at) {
+      await supabaseAdmin
+        .from('email_sends')
+        .update({
+          opened_at: new Date().toISOString(),
+        })
+        .eq('id', emailSend.id);
     }
 
     // Create event record for each open
-    await prisma.emailEvent.create({
-      data: {
-        emailSendId: emailSend.id,
-        eventType: EmailEventType.OPENED,
-        eventData: { timestamp: new Date().toISOString() },
-      },
+    const eventId = `evt_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+    await supabaseAdmin.from('email_events').insert({
+      id: eventId,
+      email_send_id: emailSend.id,
+      event_type: EmailEventType.OPENED,
+      event_data: { timestamp: new Date().toISOString() },
+      created_at: new Date().toISOString(),
     });
   }
 }
@@ -185,31 +218,34 @@ async function handleEmailOpened(event: ResendWebhookEvent) {
 async function handleEmailClicked(event: ResendWebhookEvent) {
   const { email_id, click } = event.data;
 
-  const emailSend = await prisma.emailSend.findFirst({
-    where: { resendEmailId: email_id },
-  });
+  const { data: emailSend } = await supabaseAdmin
+    .from('email_sends')
+    .select('id, clicked_at')
+    .eq('resend_email_id', email_id)
+    .single();
 
   if (emailSend) {
     // Only update clickedAt if not already set (first click)
-    if (!emailSend.clickedAt) {
-      await prisma.emailSend.update({
-        where: { id: emailSend.id },
-        data: {
-          clickedAt: new Date(),
-        },
-      });
+    if (!emailSend.clicked_at) {
+      await supabaseAdmin
+        .from('email_sends')
+        .update({
+          clicked_at: new Date().toISOString(),
+        })
+        .eq('id', emailSend.id);
     }
 
     // Create event record for each click
-    await prisma.emailEvent.create({
-      data: {
-        emailSendId: emailSend.id,
-        eventType: EmailEventType.CLICKED,
-        eventData: {
-          timestamp: new Date().toISOString(),
-          link: click?.link,
-        },
+    const eventId = `evt_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+    await supabaseAdmin.from('email_events').insert({
+      id: eventId,
+      email_send_id: emailSend.id,
+      event_type: EmailEventType.CLICKED,
+      event_data: {
+        timestamp: new Date().toISOString(),
+        link: click?.link,
       },
+      created_at: new Date().toISOString(),
     });
   }
 
@@ -219,43 +255,43 @@ async function handleEmailClicked(event: ResendWebhookEvent) {
 async function handleEmailBounced(event: ResendWebhookEvent) {
   const { email_id, to, bounce } = event.data;
 
-  const emailSend = await prisma.emailSend.findFirst({
-    where: { resendEmailId: email_id },
-  });
+  const { data: emailSend } = await supabaseAdmin
+    .from('email_sends')
+    .select('id')
+    .eq('resend_email_id', email_id)
+    .single();
 
   if (emailSend) {
-    await prisma.emailSend.update({
-      where: { id: emailSend.id },
-      data: {
+    await supabaseAdmin
+      .from('email_sends')
+      .update({
         status: EmailSendStatus.BOUNCED,
-        bouncedAt: new Date(),
-        bounceReason: bounce?.message,
-      },
-    });
+        bounced_at: new Date().toISOString(),
+        bounce_reason: bounce?.message,
+      })
+      .eq('id', emailSend.id);
 
     // Create event record
-    await prisma.emailEvent.create({
-      data: {
-        emailSendId: emailSend.id,
-        eventType: EmailEventType.BOUNCED,
-        eventData: {
-          timestamp: new Date().toISOString(),
-          reason: bounce?.message,
-        },
+    const eventId = `evt_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+    await supabaseAdmin.from('email_events').insert({
+      id: eventId,
+      email_send_id: emailSend.id,
+      event_type: EmailEventType.BOUNCED,
+      event_data: {
+        timestamp: new Date().toISOString(),
+        reason: bounce?.message,
       },
+      created_at: new Date().toISOString(),
     });
   }
 
   // Mark contact as bounced
   if (to && to.length > 0) {
-    await prisma.contact.updateMany({
-      where: {
-        email: { in: to.map((e) => e.toLowerCase()) },
-      },
-      data: {
-        status: ContactStatus.BOUNCED,
-      },
-    });
+    const lowerCaseEmails = to.map((e) => e.toLowerCase());
+    await supabaseAdmin
+      .from('contacts')
+      .update({ status: ContactStatus.BOUNCED })
+      .in('email', lowerCaseEmails);
   }
 
   console.log('Email bounced:', email_id, 'Reason:', bounce?.message);
@@ -264,41 +300,41 @@ async function handleEmailBounced(event: ResendWebhookEvent) {
 async function handleEmailComplained(event: ResendWebhookEvent) {
   const { email_id, to, complaint } = event.data;
 
-  const emailSend = await prisma.emailSend.findFirst({
-    where: { resendEmailId: email_id },
-  });
+  const { data: emailSend } = await supabaseAdmin
+    .from('email_sends')
+    .select('id')
+    .eq('resend_email_id', email_id)
+    .single();
 
   if (emailSend) {
-    await prisma.emailSend.update({
-      where: { id: emailSend.id },
-      data: {
+    await supabaseAdmin
+      .from('email_sends')
+      .update({
         status: EmailSendStatus.COMPLAINED,
-      },
-    });
+      })
+      .eq('id', emailSend.id);
 
     // Create event record
-    await prisma.emailEvent.create({
-      data: {
-        emailSendId: emailSend.id,
-        eventType: EmailEventType.COMPLAINED,
-        eventData: {
-          timestamp: new Date().toISOString(),
-          reason: complaint?.message,
-        },
+    const eventId = `evt_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+    await supabaseAdmin.from('email_events').insert({
+      id: eventId,
+      email_send_id: emailSend.id,
+      event_type: EmailEventType.COMPLAINED,
+      event_data: {
+        timestamp: new Date().toISOString(),
+        reason: complaint?.message,
       },
+      created_at: new Date().toISOString(),
     });
   }
 
   // Mark contact as complained
   if (to && to.length > 0) {
-    await prisma.contact.updateMany({
-      where: {
-        email: { in: to.map((e) => e.toLowerCase()) },
-      },
-      data: {
-        status: ContactStatus.COMPLAINED,
-      },
-    });
+    const lowerCaseEmails = to.map((e) => e.toLowerCase());
+    await supabaseAdmin
+      .from('contacts')
+      .update({ status: ContactStatus.COMPLAINED })
+      .in('email', lowerCaseEmails);
   }
 
   console.log('Email complained:', email_id, 'Reason:', complaint?.message);

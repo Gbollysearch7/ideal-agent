@@ -135,8 +135,8 @@ export default function ListsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Lists</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-4xl font-medium tracking-tight">Lists</h1>
+          <p className="text-muted-foreground text-lg">
             Organize your contacts into segments
           </p>
         </div>
@@ -148,8 +148,8 @@ export default function ListsPage() {
 
       {/* Search */}
       <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative max-w-sm flex-1">
+          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             placeholder="Search lists..."
             value={search}
@@ -196,7 +196,7 @@ export default function ListsPage() {
               <TableRow>
                 <TableCell colSpan={5} className="h-32 text-center">
                   <div className="flex flex-col items-center gap-2">
-                    <Users className="h-8 w-8 text-muted-foreground" />
+                    <Users className="text-muted-foreground h-8 w-8" />
                     <p className="text-muted-foreground">No lists found</p>
                     <Button
                       variant="outline"
@@ -217,7 +217,7 @@ export default function ListsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <Users className="text-muted-foreground h-4 w-4" />
                       {list.contactCount}
                     </div>
                   </TableCell>
@@ -233,7 +233,7 @@ export default function ListsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild>
-                          <Link href={`/lists/${list.id}`}>
+                          <Link href={`/dashboard/lists/${list.id}`}>
                             <Eye className="mr-2 h-4 w-4" />
                             View
                           </Link>
@@ -267,7 +267,7 @@ export default function ListsPage() {
       {/* Pagination */}
       {pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
             {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
             {pagination.total} lists
@@ -309,10 +309,7 @@ export default function ListsPage() {
       />
 
       {/* Delete Confirmation */}
-      <AlertDialog
-        open={!!deleteList}
-        onOpenChange={() => setDeleteList(null)}
-      >
+      <AlertDialog open={!!deleteList} onOpenChange={() => setDeleteList(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete List</AlertDialogTitle>

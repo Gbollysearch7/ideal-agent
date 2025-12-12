@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { supabaseAdmin, updateListContactCount } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
 
 // POST /api/lists/[id]/contacts - Add contacts to a list
@@ -26,29 +26,27 @@ export async function POST(
     }
 
     // Check if list exists and belongs to user
-    const list = await prisma.list.findFirst({
-      where: {
-        id: listId,
-        userId: user.id,
-      },
-    });
+    const { data: list, error: listError } = await supabaseAdmin
+      .from('lists')
+      .select('id, contact_count')
+      .eq('id', listId)
+      .eq('user_id', user.id)
+      .single();
 
-    if (!list) {
+    if (listError || !list) {
       return NextResponse.json({ error: 'List not found' }, { status: 404 });
     }
 
     const { contactIds } = validation.data;
 
     // Verify all contacts belong to the user
-    const contacts = await prisma.contact.findMany({
-      where: {
-        id: { in: contactIds },
-        userId: user.id,
-      },
-      select: { id: true },
-    });
+    const { data: contacts } = await supabaseAdmin
+      .from('contacts')
+      .select('id')
+      .eq('user_id', user.id)
+      .in('id', contactIds);
 
-    const validContactIds = contacts.map((c) => c.id);
+    const validContactIds = (contacts || []).map((c) => c.id);
     const invalidIds = contactIds.filter((id) => !validContactIds.includes(id));
 
     if (invalidIds.length > 0) {
@@ -59,15 +57,15 @@ export async function POST(
     }
 
     // Get existing associations
-    const existingAssociations = await prisma.listContact.findMany({
-      where: {
-        listId,
-        contactId: { in: validContactIds },
-      },
-      select: { contactId: true },
-    });
+    const { data: existingAssociations } = await supabaseAdmin
+      .from('list_contacts')
+      .select('contact_id')
+      .eq('list_id', listId)
+      .in('contact_id', validContactIds);
 
-    const existingIds = new Set(existingAssociations.map((a) => a.contactId));
+    const existingIds = new Set(
+      (existingAssociations || []).map((a) => a.contact_id)
+    );
     const newContactIds = validContactIds.filter((id) => !existingIds.has(id));
 
     if (newContactIds.length === 0) {
@@ -79,18 +77,16 @@ export async function POST(
     }
 
     // Add new associations
-    await prisma.listContact.createMany({
-      data: newContactIds.map((contactId) => ({
-        contactId,
-        listId,
-      })),
-    });
+    const listContactRecords = newContactIds.map((contactId) => ({
+      contact_id: contactId,
+      list_id: listId,
+      created_at: new Date().toISOString(),
+    }));
 
-    // Update list contact count
-    await prisma.list.update({
-      where: { id: listId },
-      data: { contactCount: { increment: newContactIds.length } },
-    });
+    await supabaseAdmin.from('list_contacts').insert(listContactRecords);
+
+    // Update list contact count atomically to prevent race conditions
+    await updateListContactCount(listId, newContactIds.length);
 
     return NextResponse.json({
       added: newContactIds.length,
@@ -132,38 +128,47 @@ export async function DELETE(
     }
 
     // Check if list exists and belongs to user
-    const list = await prisma.list.findFirst({
-      where: {
-        id: listId,
-        userId: user.id,
-      },
-    });
+    const { data: list, error: listError } = await supabaseAdmin
+      .from('lists')
+      .select('id, contact_count')
+      .eq('id', listId)
+      .eq('user_id', user.id)
+      .single();
 
-    if (!list) {
+    if (listError || !list) {
       return NextResponse.json({ error: 'List not found' }, { status: 404 });
     }
 
     const { contactIds } = validation.data;
 
-    // Remove associations
-    const result = await prisma.listContact.deleteMany({
-      where: {
-        listId,
-        contactId: { in: contactIds },
-      },
-    });
+    // Count existing associations before delete
+    const { count: existingCount } = await supabaseAdmin
+      .from('list_contacts')
+      .select('*', { count: 'exact', head: true })
+      .eq('list_id', listId)
+      .in('contact_id', contactIds);
 
-    // Update list contact count
-    if (result.count > 0) {
-      await prisma.list.update({
-        where: { id: listId },
-        data: { contactCount: { decrement: result.count } },
-      });
+    // Remove associations
+    const { error: deleteError } = await supabaseAdmin
+      .from('list_contacts')
+      .delete()
+      .eq('list_id', listId)
+      .in('contact_id', contactIds);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    const removedCount = existingCount || 0;
+
+    // Update list contact count atomically to prevent race conditions
+    if (removedCount > 0) {
+      await updateListContactCount(listId, -removedCount);
     }
 
     return NextResponse.json({
-      removed: result.count,
-      message: `Removed ${result.count} contacts from the list`,
+      removed: removedCount,
+      message: `Removed ${removedCount} contacts from the list`,
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {

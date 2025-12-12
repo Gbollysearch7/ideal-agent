@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin, createSearchFilter } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
 
 // Campaign status enum (replaces Prisma import)
@@ -40,7 +40,10 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,subject.ilike.%${search}%`);
+      const searchFilter = createSearchFilter(['name', 'subject'], search);
+      if (searchFilter) {
+        query = query.or(searchFilter);
+      }
     }
 
     if (status && CampaignStatus.includes(status)) {

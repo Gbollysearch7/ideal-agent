@@ -98,7 +98,8 @@ const statusConfig: Record<
   },
   SENDING: {
     label: 'Sending',
-    color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+    color:
+      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
     icon: <Send className="h-3 w-3" />,
   },
   SENT: {
@@ -108,7 +109,8 @@ const statusConfig: Record<
   },
   PAUSED: {
     label: 'Paused',
-    color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
+    color:
+      'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
     icon: <AlertCircle className="h-3 w-3" />,
   },
   CANCELLED: {
@@ -203,10 +205,9 @@ export default function CampaignsPage() {
 
     setSending(true);
     try {
-      const response = await fetch(
-        `/api/campaigns/${sendCampaign.id}/send`,
-        { method: 'POST' }
-      );
+      const response = await fetch(`/api/campaigns/${sendCampaign.id}/send`, {
+        method: 'POST',
+      });
 
       if (!response.ok) {
         const data = await response.json();
@@ -231,13 +232,13 @@ export default function CampaignsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Campaigns</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-4xl font-medium tracking-tight">Campaigns</h1>
+          <p className="text-muted-foreground text-lg">
             Create and manage your email campaigns
           </p>
         </div>
         <Button asChild>
-          <Link href="/campaigns/new">
+          <Link href="/dashboard/campaigns/new">
             <Plus className="mr-2 h-4 w-4" />
             Create Campaign
           </Link>
@@ -246,8 +247,8 @@ export default function CampaignsPage() {
 
       {/* Filters */}
       <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative max-w-sm flex-1">
+          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             placeholder="Search campaigns..."
             value={search}
@@ -317,10 +318,10 @@ export default function CampaignsPage() {
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center">
                   <div className="flex flex-col items-center gap-2">
-                    <Mail className="h-8 w-8 text-muted-foreground" />
+                    <Mail className="text-muted-foreground h-8 w-8" />
                     <p className="text-muted-foreground">No campaigns found</p>
                     <Button variant="outline" size="sm" asChild>
-                      <Link href="/campaigns/new">
+                      <Link href="/dashboard/campaigns/new">
                         Create your first campaign
                       </Link>
                     </Button>
@@ -333,7 +334,7 @@ export default function CampaignsPage() {
                   <TableCell>
                     <div>
                       <div className="font-medium">{campaign.name}</div>
-                      <div className="text-sm text-muted-foreground truncate max-w-[250px]">
+                      <div className="text-muted-foreground max-w-[250px] truncate text-sm">
                         {campaign.subject}
                       </div>
                     </div>
@@ -447,7 +448,7 @@ export default function CampaignsPage() {
       {/* Pagination */}
       {pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
             {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
             {pagination.total} campaigns
@@ -519,10 +520,7 @@ export default function CampaignsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={sending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleSendCampaign}
-              disabled={sending}
-            >
+            <AlertDialogAction onClick={handleSendCampaign} disabled={sending}>
               {sending ? 'Sending...' : 'Send Campaign'}
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -24,9 +24,11 @@ export default async function DashboardLayout({
           email: session.user.email || '',
         }}
       />
-      <SidebarInset>
+      <SidebarInset className="bg-background">
         <Header />
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-auto p-6 md:p-8 lg:p-10">
+          {children}
+        </main>
       </SidebarInset>
       <Toaster />
     </SidebarProvider>

@@ -111,19 +111,21 @@ export function AppSidebar({ user }: AppSidebarProps) {
   };
 
   return (
-    <Sidebar>
-      <SidebarHeader className="border-b px-4 py-3">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <Mail className="h-4 w-4 text-primary-foreground" />
+    <Sidebar className="border-r-0">
+      <SidebarHeader className="px-4 py-4">
+        <Link href="/dashboard" className="flex items-center gap-3">
+          <div className="bg-foreground flex h-9 w-9 items-center justify-center rounded-lg">
+            <Mail className="text-background h-4 w-4" />
           </div>
-          <span className="text-lg font-semibold">Email Platform</span>
+          <span className="text-lg font-medium tracking-tight">Chronicle</span>
         </Link>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="px-2">
         <SidebarGroup>
-          <SidebarGroupLabel>Main</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-muted-foreground px-2 text-xs font-medium tracking-wider uppercase">
+            Main
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNavItems.map((item) => (
@@ -131,9 +133,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   <SidebarMenuButton
                     asChild
                     isActive={isActive(item.url)}
+                    className="hover:bg-accent data-[active=true]:bg-accent h-10 rounded-lg px-3 font-normal transition-colors data-[active=true]:font-medium"
                   >
                     <Link href={item.url}>
-                      <item.icon className="h-4 w-4" />
+                      <item.icon className="h-4 w-4 opacity-70" />
                       <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -144,7 +147,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Tools</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-muted-foreground px-2 text-xs font-medium tracking-wider uppercase">
+            Tools
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {toolsNavItems.map((item) => (
@@ -152,9 +157,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   <SidebarMenuButton
                     asChild
                     isActive={isActive(item.url)}
+                    className="hover:bg-accent data-[active=true]:bg-accent h-10 rounded-lg px-3 font-normal transition-colors data-[active=true]:font-medium"
                   >
                     <Link href={item.url}>
-                      <item.icon className="h-4 w-4" />
+                      <item.icon className="h-4 w-4 opacity-70" />
                       <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -164,16 +170,17 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
+        <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
                   isActive={isActive('/dashboard/settings')}
+                  className="hover:bg-accent data-[active=true]:bg-accent h-10 rounded-lg px-3 font-normal transition-colors data-[active=true]:font-medium"
                 >
                   <Link href="/dashboard/settings">
-                    <Settings className="h-4 w-4" />
+                    <Settings className="h-4 w-4 opacity-70" />
                     <span>Settings</span>
                   </Link>
                 </SidebarMenuButton>
@@ -183,40 +190,42 @@ export function AppSidebar({ user }: AppSidebarProps) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t">
+      <SidebarFooter className="border-border/50 border-t p-3">
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton className="h-auto py-2">
+                <SidebarMenuButton className="hover:bg-accent h-auto rounded-lg px-3 py-2.5">
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-primary/10 text-primary">
+                    <AvatarFallback className="bg-foreground/10 text-foreground text-xs font-medium">
                       {getInitials(user.name)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col items-start text-sm">
-                    <span className="font-medium">{user.name}</span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="font-medium tracking-tight">
+                      {user.name}
+                    </span>
+                    <span className="text-muted-foreground text-xs">
                       {user.email}
                     </span>
                   </div>
-                  <ChevronUp className="ml-auto h-4 w-4" />
+                  <ChevronUp className="ml-auto h-4 w-4 opacity-50" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 side="top"
-                className="w-[--radix-popper-anchor-width]"
+                className="w-[--radix-popper-anchor-width] rounded-lg"
               >
-                <DropdownMenuItem asChild>
+                <DropdownMenuItem asChild className="rounded-md">
                   <Link href="/dashboard/settings">
-                    <User className="mr-2 h-4 w-4" />
+                    <User className="mr-2 h-4 w-4 opacity-70" />
                     Account Settings
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => signOut({ callbackUrl: '/login' })}
-                  className="text-destructive focus:text-destructive"
+                  className="text-destructive focus:text-destructive rounded-md"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign out

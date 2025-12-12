@@ -7,16 +7,12 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Mail, Lock, Loader2 } from 'lucide-react';
+import { Mail, Lock, Loader2, Wrench, ArrowRight } from 'lucide-react';
+
+// Dev bypass credentials
+const DEV_EMAIL = 'dev@test.com';
+const DEV_PASSWORD = 'devtest123';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -50,76 +46,138 @@ export default function LoginPage() {
     }
   };
 
+  const handleDevLogin = async () => {
+    setError('');
+    setIsLoading(true);
+
+    try {
+      const result = await signIn('credentials', {
+        email: DEV_EMAIL,
+        password: DEV_PASSWORD,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setError(
+          'Dev login failed. Make sure ENABLE_DEV_BYPASS=true in .env.local'
+        );
+      } else {
+        router.push('/dashboard');
+        router.refresh();
+      }
+    } catch {
+      setError('An unexpected error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <Card className="w-full">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-        <CardDescription>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="space-y-2 text-center">
+        <h1 className="text-3xl font-medium tracking-tight">Welcome back</h1>
+        <p className="text-muted-foreground">
           Enter your credentials to access your account
-        </CardDescription>
-      </CardHeader>
-      <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+        </p>
+      </div>
+
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {error && (
+          <Alert
+            variant="destructive"
+            className="border-destructive/50 bg-destructive/10"
+          >
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-sm font-medium">
+              Email
+            </Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Mail className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
               <Input
                 id="email"
                 type="email"
                 placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="pl-10"
+                className="h-12 pl-10"
                 required
                 disabled={isLoading}
               />
             </div>
           </div>
+
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password" className="text-sm font-medium">
+              Password
+            </Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Lock className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
               <Input
                 id="password"
                 type="password"
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="pl-10"
+                className="h-12 pl-10"
                 required
                 disabled={isLoading}
               />
             </div>
           </div>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <Button type="submit" className="w-full" disabled={isLoading}>
+        </div>
+
+        <div className="space-y-3">
+          <Button
+            type="submit"
+            className="h-12 w-full text-base"
+            disabled={isLoading}
+          >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Signing in...
               </>
             ) : (
-              'Sign in'
+              <>
+                Sign in
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </>
             )}
           </Button>
-          <p className="text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{' '}
-            <Link
-              href="/register"
-              className="font-medium text-primary underline-offset-4 hover:underline"
+
+          {/* Dev Login Button - Only shown in development */}
+          {process.env.NODE_ENV === 'development' && (
+            <Button
+              type="button"
+              variant="outline"
+              className="border-warning/50 text-warning hover:bg-warning/10 h-12 w-full border-dashed"
+              onClick={handleDevLogin}
+              disabled={isLoading}
             >
-              Create one
-            </Link>
-          </p>
-        </CardFooter>
+              <Wrench className="mr-2 h-4 w-4" />
+              Quick Dev Login
+            </Button>
+          )}
+        </div>
       </form>
-    </Card>
+
+      {/* Footer */}
+      <p className="text-muted-foreground text-center text-sm">
+        Don&apos;t have an account?{' '}
+        <Link
+          href="/register"
+          className="text-foreground font-medium underline-offset-4 transition-colors hover:underline"
+        >
+          Create one
+        </Link>
+      </p>
+    </div>
   );
 }

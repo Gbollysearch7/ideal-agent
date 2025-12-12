@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin, createSearchFilter } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
 
 // GET /api/lists - List all lists with pagination
@@ -27,9 +27,12 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    // Apply search filter
+    // Apply search filter (with proper escaping to prevent SQL injection)
     if (search) {
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+      const searchFilter = createSearchFilter(['name', 'description'], search);
+      if (searchFilter) {
+        query = query.or(searchFilter);
+      }
     }
 
     const { data: lists, count, error } = await query;

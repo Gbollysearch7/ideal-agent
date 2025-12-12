@@ -171,13 +171,13 @@ export default function TemplatesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Templates</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-4xl font-medium tracking-tight">Templates</h1>
+          <p className="text-muted-foreground text-lg">
             Create and manage your email templates
           </p>
         </div>
         <Button asChild>
-          <Link href="/templates/new">
+          <Link href="/dashboard/templates/new">
             <Plus className="mr-2 h-4 w-4" />
             Create Template
           </Link>
@@ -186,8 +186,8 @@ export default function TemplatesPage() {
 
       {/* Filters */}
       <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative max-w-sm flex-1">
+          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             placeholder="Search templates..."
             value={search}
@@ -220,7 +220,7 @@ export default function TemplatesPage() {
                 <Skeleton className="h-40 w-full rounded-t-lg" />
               </CardHeader>
               <CardContent className="p-4">
-                <Skeleton className="h-5 w-3/4 mb-2" />
+                <Skeleton className="mb-2 h-5 w-3/4" />
                 <Skeleton className="h-4 w-full" />
               </CardContent>
               <CardFooter className="p-4 pt-0">
@@ -230,18 +230,18 @@ export default function TemplatesPage() {
           ))}
         </div>
       ) : templates.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-4">
-          <FileText className="h-12 w-12 text-muted-foreground" />
+        <div className="flex flex-col items-center justify-center gap-4 py-16">
+          <FileText className="text-muted-foreground h-12 w-12" />
           <div className="text-center">
             <h3 className="font-semibold">No templates found</h3>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-muted-foreground mt-1 text-sm">
               {search || categoryFilter !== 'all'
                 ? 'Try adjusting your search or filters'
                 : 'Create your first email template to get started'}
             </p>
           </div>
           <Button asChild>
-            <Link href="/templates/new">
+            <Link href="/dashboard/templates/new">
               <Plus className="mr-2 h-4 w-4" />
               Create Template
             </Link>
@@ -250,8 +250,8 @@ export default function TemplatesPage() {
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {templates.map((template) => (
-            <Card key={template.id} className="overflow-hidden group">
-              <CardHeader className="p-0 relative">
+            <Card key={template.id} className="group overflow-hidden">
+              <CardHeader className="relative p-0">
                 {template.thumbnail ? (
                   <img
                     src={template.thumbnail}
@@ -259,19 +259,19 @@ export default function TemplatesPage() {
                     className="h-40 w-full object-cover"
                   />
                 ) : (
-                  <div className="h-40 w-full bg-muted flex items-center justify-center">
-                    <FileText className="h-12 w-12 text-muted-foreground" />
+                  <div className="bg-muted flex h-40 w-full items-center justify-center">
+                    <FileText className="text-muted-foreground h-12 w-12" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
                   <Button size="sm" variant="secondary" asChild>
-                    <Link href={`/templates/${template.id}`}>
+                    <Link href={`/dashboard/templates/${template.id}`}>
                       <Eye className="mr-1 h-4 w-4" />
                       View
                     </Link>
                   </Button>
                   <Button size="sm" variant="secondary" asChild>
-                    <Link href={`/templates/${template.id}/edit`}>
+                    <Link href={`/dashboard/templates/${template.id}/edit`}>
                       <Edit className="mr-1 h-4 w-4" />
                       Edit
                     </Link>
@@ -281,8 +281,8 @@ export default function TemplatesPage() {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold truncate">{template.name}</h3>
-                    <p className="text-sm text-muted-foreground truncate">
+                    <h3 className="truncate font-semibold">{template.name}</h3>
+                    <p className="text-muted-foreground truncate text-sm">
                       {template.subject}
                     </p>
                   </div>
@@ -294,13 +294,13 @@ export default function TemplatesPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem asChild>
-                        <Link href={`/templates/${template.id}`}>
+                        <Link href={`/dashboard/templates/${template.id}`}>
                           <Eye className="mr-2 h-4 w-4" />
                           View
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
-                        <Link href={`/templates/${template.id}/edit`}>
+                        <Link href={`/dashboard/templates/${template.id}/edit`}>
                           <Edit className="mr-2 h-4 w-4" />
                           Edit
                         </Link>
@@ -322,11 +322,11 @@ export default function TemplatesPage() {
                   </DropdownMenu>
                 </div>
               </CardContent>
-              <CardFooter className="p-4 pt-0 flex items-center justify-between">
+              <CardFooter className="flex items-center justify-between p-4 pt-0">
                 {template.category && (
                   <Badge variant="secondary">{template.category}</Badge>
                 )}
-                <span className="text-xs text-muted-foreground">
+                <span className="text-muted-foreground text-xs">
                   {new Date(template.updatedAt).toLocaleDateString()}
                 </span>
               </CardFooter>
@@ -338,7 +338,7 @@ export default function TemplatesPage() {
       {/* Pagination */}
       {pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Showing {(pagination.page - 1) * pagination.limit + 1} to{' '}
             {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
             {pagination.total} templates

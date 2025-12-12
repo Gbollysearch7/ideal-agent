@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { supabaseAdmin } from '@/lib/supabase';
+import {
+  supabaseAdmin,
+  createSearchFilter,
+  updateListContactCount,
+} from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
 
 // GET /api/contacts - List contacts with pagination, search, and filtering
@@ -29,11 +33,15 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    // Apply search filter
+    // Apply search filter (with proper escaping to prevent SQL injection)
     if (search) {
-      query = query.or(
-        `email.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%`
+      const searchFilter = createSearchFilter(
+        ['email', 'first_name', 'last_name'],
+        search
       );
+      if (searchFilter) {
+        query = query.or(searchFilter);
+      }
     }
 
     // Apply status filter
@@ -185,19 +193,10 @@ export async function POST(request: NextRequest) {
 
       await supabaseAdmin.from('list_contacts').insert(listContactRecords);
 
-      // Update list contact counts
-      for (const listId of listIds) {
-        const { data: list } = await supabaseAdmin
-          .from('lists')
-          .select('contact_count')
-          .eq('id', listId)
-          .single();
-
-        await supabaseAdmin
-          .from('lists')
-          .update({ contact_count: (list?.contact_count || 0) + 1 })
-          .eq('id', listId);
-      }
+      // Update list contact counts atomically to prevent race conditions
+      await Promise.all(
+        listIds.map((listId) => updateListContactCount(listId, 1))
+      );
     }
 
     // Fetch lists for the contact

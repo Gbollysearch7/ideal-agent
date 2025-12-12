@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/redis';
-import { prisma } from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase';
 import { EmailJobData } from './email.queue';
 
 // Create the email worker
@@ -40,23 +40,26 @@ export function createEmailWorker() {
           throw new Error(result.error.message);
         }
 
+        // Generate email send ID
+        const emailSendId = `es_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+
         // Save to database
-        await prisma.emailSend.create({
-          data: {
-            campaignId,
-            contactId,
-            userId,
-            resendEmailId: result.data?.id || '',
-            status: 'SENT',
-            sentAt: new Date(),
-          },
+        await supabaseAdmin.from('email_sends').insert({
+          id: emailSendId,
+          campaign_id: campaignId,
+          contact_id: contactId,
+          user_id: userId,
+          resend_email_id: result.data?.id || '',
+          status: 'SENT',
+          sent_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
         });
 
         // Update contact's last email sent date
-        await prisma.contact.update({
-          where: { id: contactId },
-          data: { lastEmailSentAt: new Date() },
-        });
+        await supabaseAdmin
+          .from('contacts')
+          .update({ last_email_sent_at: new Date().toISOString() })
+          .eq('id', contactId);
 
         return {
           success: true,
@@ -64,16 +67,19 @@ export function createEmailWorker() {
           to,
         };
       } catch (error) {
+        // Generate email send ID for failed record
+        const emailSendId = `es_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+
         // Log the failed send
-        await prisma.emailSend.create({
-          data: {
-            campaignId,
-            contactId,
-            userId,
-            status: 'BOUNCED',
-            bounceReason:
-              error instanceof Error ? error.message : 'Unknown error',
-          },
+        await supabaseAdmin.from('email_sends').insert({
+          id: emailSendId,
+          campaign_id: campaignId,
+          contact_id: contactId,
+          user_id: userId,
+          status: 'BOUNCED',
+          bounce_reason:
+            error instanceof Error ? error.message : 'Unknown error',
+          created_at: new Date().toISOString(),
         });
 
         throw error;
@@ -91,9 +97,7 @@ export function createEmailWorker() {
 
   // Event handlers
   worker.on('completed', (job, result) => {
-    console.log(
-      `Email job ${job.id} completed: sent to ${result.to}`
-    );
+    console.log(`Email job ${job.id} completed: sent to ${result.to}`);
   });
 
   worker.on('failed', (job, error) => {
@@ -113,32 +117,31 @@ export function createEmailWorker() {
 
 // Campaign completion checker
 export async function checkCampaignCompletion(campaignId: string) {
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: campaignId },
-    include: {
-      _count: {
-        select: {
-          emailSends: true,
-        },
-      },
-    },
-  });
+  const { data: campaign } = await supabaseAdmin
+    .from('campaigns')
+    .select('id, status, total_recipients')
+    .eq('id', campaignId)
+    .single();
 
   if (!campaign) return;
 
-  const totalSent = campaign._count.emailSends;
+  // Count email sends for this campaign
+  const { count: totalSent } = await supabaseAdmin
+    .from('email_sends')
+    .select('*', { count: 'exact', head: true })
+    .eq('campaign_id', campaignId);
 
   if (
     campaign.status === 'SENDING' &&
-    totalSent >= campaign.totalRecipients
+    (totalSent || 0) >= campaign.total_recipients
   ) {
-    await prisma.campaign.update({
-      where: { id: campaignId },
-      data: {
+    await supabaseAdmin
+      .from('campaigns')
+      .update({
         status: 'SENT',
-        completedAt: new Date(),
-      },
-    });
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', campaignId);
   }
 }
 
