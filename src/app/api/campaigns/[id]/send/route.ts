@@ -3,6 +3,12 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
 import { addBulkEmailsToQueue } from '@/queues/email.queue';
 import { prepareEmailContent } from '@/lib/resend';
+import { generateUnsubscribeToken } from '@/lib/unsubscribe';
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  RateLimitPresets,
+} from '@/lib/rate-limit';
 
 // Status enums (replaces Prisma imports)
 const CampaignStatus = {
@@ -37,6 +43,21 @@ export async function POST(
   try {
     const user = await requireAuth();
     const { id } = await params;
+
+    // Rate limiting for email sending
+    const rateLimit = checkRateLimit(
+      `send:${user.id}`,
+      RateLimitPresets.emailSend
+    );
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        {
+          error:
+            'Too many send requests. Please wait before sending another campaign.',
+        },
+        { status: 429, headers: rateLimitHeaders(rateLimit) }
+      );
+    }
 
     // Get campaign with template
     const { data: campaign, error: campaignError } = await supabaseAdmin
@@ -194,7 +215,7 @@ export async function POST(
         {
           subject: campaign.subject,
           previewText: template?.preview_text || '',
-          unsubscribeUrl: `${unsubscribeUrl}?email=${encodeURIComponent(contact.email)}&campaign=${campaign.id}`,
+          unsubscribeUrl: `${unsubscribeUrl}?email=${encodeURIComponent(contact.email)}&token=${generateUnsubscribeToken(contact.email)}`,
         }
       );
 

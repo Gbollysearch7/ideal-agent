@@ -8,15 +8,14 @@ import {
   analyzeEmailContent,
   generateABTestVariations,
 } from '@/lib/ai';
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  RateLimitPresets,
+} from '@/lib/rate-limit';
 
 const generateSchema = z.object({
-  action: z.enum([
-    'subjects',
-    'content',
-    'improve',
-    'analyze',
-    'abtest',
-  ]),
+  action: z.enum(['subjects', 'content', 'improve', 'analyze', 'abtest']),
   // For subject generation
   topic: z.string().optional(),
   tone: z.enum(['professional', 'casual', 'urgent', 'friendly']).optional(),
@@ -27,7 +26,9 @@ const generateSchema = z.object({
   keyPoints: z.array(z.string()).optional(),
   // For improvement
   content: z.string().optional(),
-  improvement: z.enum(['clarity', 'engagement', 'persuasion', 'brevity', 'tone']).optional(),
+  improvement: z
+    .enum(['clarity', 'engagement', 'persuasion', 'brevity', 'tone'])
+    .optional(),
   // For A/B testing
   element: z.enum(['subject', 'cta', 'opening', 'full']).optional(),
   variations: z.number().min(1).max(5).optional(),
@@ -35,7 +36,23 @@ const generateSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAuth();
+    const user = await requireAuth();
+
+    // Rate limiting for AI generation
+    const rateLimit = checkRateLimit(
+      `ai:${user.id}`,
+      RateLimitPresets.aiGeneration
+    );
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        {
+          error:
+            'Too many AI generation requests. Please wait before trying again.',
+        },
+        { status: 429, headers: rateLimitHeaders(rateLimit) }
+      );
+    }
+
     const body = await request.json();
 
     const validation = generateSchema.safeParse(body);
@@ -103,7 +120,9 @@ export async function POST(request: NextRequest) {
       case 'abtest':
         if (!params.content || !params.element) {
           return NextResponse.json(
-            { error: 'Content and element are required for A/B test generation' },
+            {
+              error: 'Content and element are required for A/B test generation',
+            },
             { status: 400 }
           );
         }
@@ -115,10 +134,7 @@ export async function POST(request: NextRequest) {
         break;
 
       default:
-        return NextResponse.json(
-          { error: 'Invalid action' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
     return NextResponse.json({ result });

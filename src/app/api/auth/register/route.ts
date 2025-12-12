@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { hashPassword } from '@/lib/auth';
 import { z } from 'zod';
+import {
+  checkRateLimit,
+  getClientIdentifier,
+  rateLimitHeaders,
+  RateLimitPresets,
+} from '@/lib/rate-limit';
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -12,6 +18,20 @@ const registerSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting for auth routes
+    const clientId = getClientIdentifier(request);
+    const rateLimit = checkRateLimit(
+      `register:${clientId}`,
+      RateLimitPresets.auth
+    );
+
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: 'Too many registration attempts. Please try again later.' },
+        { status: 429, headers: rateLimitHeaders(rateLimit) }
+      );
+    }
+
     const body = await request.json();
 
     // Validate input
