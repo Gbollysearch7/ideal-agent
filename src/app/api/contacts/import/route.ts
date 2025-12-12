@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
-import { ContactStatus } from '@prisma/client';
 
 // POST /api/contacts/import - Bulk import contacts from CSV data
 const importContactSchema = z.object({
@@ -34,17 +33,16 @@ export async function POST(request: NextRequest) {
     const { contacts, listIds, skipDuplicates } = validation.data;
 
     // Get existing emails for this user
-    const existingContacts = await prisma.contact.findMany({
-      where: {
-        userId: user.id,
-        email: {
-          in: contacts.map((c) => c.email.toLowerCase()),
-        },
-      },
-      select: { email: true },
-    });
+    const emails = contacts.map((c) => c.email.toLowerCase());
+    const { data: existingContacts } = await supabaseAdmin
+      .from('contacts')
+      .select('email')
+      .eq('user_id', user.id)
+      .in('email', emails);
 
-    const existingEmails = new Set(existingContacts.map((c) => c.email));
+    const existingEmails = new Set(
+      (existingContacts || []).map((c) => c.email)
+    );
 
     // Filter out duplicates if skipDuplicates is true
     let contactsToImport = contacts;
@@ -76,48 +74,85 @@ export async function POST(request: NextRequest) {
       const batch = contactsToImport.slice(i, i + BATCH_SIZE);
 
       try {
-        // Use transaction for each batch
-        await prisma.$transaction(async (tx) => {
-          for (const contactData of batch) {
-            try {
-              const contact = await tx.contact.create({
-                data: {
-                  email: contactData.email.toLowerCase(),
-                  firstName: contactData.firstName,
-                  lastName: contactData.lastName,
-                  metadata: (contactData.metadata || {}) as object,
-                  userId: user.id,
-                  status: ContactStatus.SUBSCRIBED,
-                  lists: listIds
-                    ? {
-                        create: listIds.map((listId) => ({
-                          listId,
-                        })),
-                      }
-                    : undefined,
-                },
-              });
-              importedCount++;
-            } catch (err) {
-              errors.push({
-                email: contactData.email,
-                error: err instanceof Error ? err.message : 'Unknown error',
+        // Prepare batch data
+        const batchData = batch.map((contactData) => ({
+          id: `c_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
+          email: contactData.email.toLowerCase(),
+          first_name: contactData.firstName || null,
+          last_name: contactData.lastName || null,
+          metadata: contactData.metadata || {},
+          user_id: user.id,
+          status: 'SUBSCRIBED',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
+
+        // Insert contacts batch
+        const { data: insertedContacts, error: insertError } =
+          await supabaseAdmin.from('contacts').insert(batchData).select('id');
+
+        if (insertError) {
+          console.error('Batch insert error:', insertError);
+          batch.forEach((c) => {
+            errors.push({ email: c.email, error: insertError.message });
+          });
+          continue;
+        }
+
+        importedCount += insertedContacts?.length || 0;
+
+        // Add to lists if specified
+        if (listIds && listIds.length > 0 && insertedContacts) {
+          const listContactRecords: {
+            contact_id: string;
+            list_id: string;
+            created_at: string;
+          }[] = [];
+
+          for (const contact of insertedContacts) {
+            for (const listId of listIds) {
+              listContactRecords.push({
+                contact_id: contact.id,
+                list_id: listId,
+                created_at: new Date().toISOString(),
               });
             }
           }
-        });
+
+          if (listContactRecords.length > 0) {
+            await supabaseAdmin
+              .from('list_contacts')
+              .insert(listContactRecords);
+          }
+        }
       } catch (batchError) {
         console.error('Batch import error:', batchError);
-        // Continue with next batch even if this one fails
+        batch.forEach((c) => {
+          errors.push({
+            email: c.email,
+            error:
+              batchError instanceof Error
+                ? batchError.message
+                : 'Unknown error',
+          });
+        });
       }
     }
 
     // Update list contact counts
     if (listIds && listIds.length > 0 && importedCount > 0) {
-      await prisma.list.updateMany({
-        where: { id: { in: listIds } },
-        data: { contactCount: { increment: importedCount } },
-      });
+      for (const listId of listIds) {
+        const { data: list } = await supabaseAdmin
+          .from('lists')
+          .select('contact_count')
+          .eq('id', listId)
+          .single();
+
+        await supabaseAdmin
+          .from('lists')
+          .update({ contact_count: (list?.contact_count || 0) + importedCount })
+          .eq('id', listId);
+      }
     }
 
     return NextResponse.json({

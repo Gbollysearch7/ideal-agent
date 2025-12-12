@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
-import { CampaignStatus, EmailSendStatus } from '@prisma/client';
+
+// Campaign status enum (replaces Prisma import)
+const CampaignStatus = [
+  'DRAFT',
+  'SCHEDULED',
+  'SENDING',
+  'SENT',
+  'PAUSED',
+  'CANCELLED',
+] as const;
+type CampaignStatusType = (typeof CampaignStatus)[number];
 
 // GET /api/campaigns/[id] - Get a single campaign with details
 export async function GET(
@@ -13,17 +23,14 @@ export async function GET(
     const user = await requireAuth();
     const { id } = await params;
 
-    const campaign = await prisma.campaign.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-      include: {
-        template: true,
-      },
-    });
+    const { data: campaign, error } = await supabaseAdmin
+      .from('campaigns')
+      .select('*, email_templates(*)')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
-    if (!campaign) {
+    if (error || !campaign) {
       return NextResponse.json(
         { error: 'Campaign not found' },
         { status: 404 }
@@ -31,39 +38,92 @@ export async function GET(
     }
 
     // Get detailed metrics
-    const [totalSent, delivered, opened, clicked, bounced, complained] =
-      await Promise.all([
-        prisma.emailSend.count({ where: { campaignId: id } }),
-        prisma.emailSend.count({
-          where: { campaignId: id, status: { in: [EmailSendStatus.DELIVERED, EmailSendStatus.SENT] } },
-        }),
-        prisma.emailSend.count({
-          where: { campaignId: id, openedAt: { not: null } },
-        }),
-        prisma.emailSend.count({
-          where: { campaignId: id, clickedAt: { not: null } },
-        }),
-        prisma.emailSend.count({
-          where: { campaignId: id, status: EmailSendStatus.BOUNCED },
-        }),
-        prisma.emailSend.count({
-          where: { campaignId: id, status: EmailSendStatus.COMPLAINED },
-        }),
-      ]);
+    const [
+      { count: totalSent },
+      { count: delivered },
+      { count: opened },
+      { count: clicked },
+      { count: bounced },
+      { count: complained },
+    ] = await Promise.all([
+      supabaseAdmin
+        .from('email_sends')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', id),
+      supabaseAdmin
+        .from('email_sends')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', id)
+        .in('status', ['DELIVERED', 'SENT']),
+      supabaseAdmin
+        .from('email_sends')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', id)
+        .not('opened_at', 'is', null),
+      supabaseAdmin
+        .from('email_sends')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', id)
+        .not('clicked_at', 'is', null),
+      supabaseAdmin
+        .from('email_sends')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', id)
+        .eq('status', 'BOUNCED'),
+      supabaseAdmin
+        .from('email_sends')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', id)
+        .eq('status', 'COMPLAINED'),
+    ]);
+
+    const totalSentCount = totalSent || 0;
+    const deliveredCount = delivered || 0;
+    const openedCount = opened || 0;
+    const clickedCount = clicked || 0;
+    const bouncedCount = bounced || 0;
+    const complainedCount = complained || 0;
 
     return NextResponse.json({
-      ...campaign,
+      id: campaign.id,
+      name: campaign.name,
+      subject: campaign.subject,
+      previewText: campaign.preview_text,
+      status: campaign.status,
+      templateId: campaign.template_id,
+      template: campaign.email_templates
+        ? {
+            id: campaign.email_templates.id,
+            name: campaign.email_templates.name,
+            subject: campaign.email_templates.subject,
+            htmlContent: campaign.email_templates.html_content,
+            textContent: campaign.email_templates.text_content,
+          }
+        : null,
+      listIds: campaign.list_ids,
+      fromName: campaign.from_name,
+      fromEmail: campaign.from_email,
+      replyTo: campaign.reply_to,
+      htmlContent: campaign.html_content,
+      textContent: campaign.text_content,
+      scheduledAt: campaign.scheduled_at,
+      sentAt: campaign.sent_at,
+      totalRecipients: campaign.total_recipients,
+      createdAt: campaign.created_at,
+      updatedAt: campaign.updated_at,
       metrics: {
-        sent: totalSent,
-        delivered,
-        opened,
-        clicked,
-        bounced,
-        complained,
-        openRate: delivered > 0 ? (opened / delivered) * 100 : 0,
-        clickRate: opened > 0 ? (clicked / opened) * 100 : 0,
-        bounceRate: totalSent > 0 ? (bounced / totalSent) * 100 : 0,
-        complaintRate: totalSent > 0 ? (complained / totalSent) * 100 : 0,
+        sent: totalSentCount,
+        delivered: deliveredCount,
+        opened: openedCount,
+        clicked: clickedCount,
+        bounced: bouncedCount,
+        complained: complainedCount,
+        openRate: deliveredCount > 0 ? (openedCount / deliveredCount) * 100 : 0,
+        clickRate: openedCount > 0 ? (clickedCount / openedCount) * 100 : 0,
+        bounceRate:
+          totalSentCount > 0 ? (bouncedCount / totalSentCount) * 100 : 0,
+        complaintRate:
+          totalSentCount > 0 ? (complainedCount / totalSentCount) * 100 : 0,
       },
     });
   } catch (error) {
@@ -89,7 +149,7 @@ const updateCampaignSchema = z.object({
   fromEmail: z.string().email().optional().nullable(),
   replyTo: z.string().email().optional().nullable(),
   scheduledAt: z.string().datetime().optional().nullable(),
-  status: z.nativeEnum(CampaignStatus).optional(),
+  status: z.enum(CampaignStatus).optional(),
 });
 
 export async function PATCH(
@@ -110,14 +170,14 @@ export async function PATCH(
     }
 
     // Check if campaign exists and belongs to user
-    const existingCampaign = await prisma.campaign.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-    });
+    const { data: existingCampaign, error: fetchError } = await supabaseAdmin
+      .from('campaigns')
+      .select('id, status')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
-    if (!existingCampaign) {
+    if (fetchError || !existingCampaign) {
       return NextResponse.json(
         { error: 'Campaign not found' },
         { status: 404 }
@@ -150,14 +210,14 @@ export async function PATCH(
 
     // If template is being changed, verify it exists
     if (templateId) {
-      const template = await prisma.emailTemplate.findFirst({
-        where: {
-          id: templateId,
-          userId: user.id,
-        },
-      });
+      const { data: template, error: templateError } = await supabaseAdmin
+        .from('email_templates')
+        .select('id')
+        .eq('id', templateId)
+        .eq('user_id', user.id)
+        .single();
 
-      if (!template) {
+      if (templateError || !template) {
         return NextResponse.json(
           { error: 'Template not found' },
           { status: 404 }
@@ -167,47 +227,75 @@ export async function PATCH(
 
     // If lists are being changed, verify they exist
     if (listIds && listIds.length > 0) {
-      const lists = await prisma.list.findMany({
-        where: {
-          id: { in: listIds },
-          userId: user.id,
-        },
-      });
+      const { data: lists, error: listsError } = await supabaseAdmin
+        .from('lists')
+        .select('id')
+        .in('id', listIds)
+        .eq('user_id', user.id);
 
-      if (lists.length !== listIds.length) {
-        return NextResponse.json({ error: 'One or more lists not found' }, { status: 404 });
+      if (listsError || !lists || lists.length !== listIds.length) {
+        return NextResponse.json(
+          { error: 'One or more lists not found' },
+          { status: 404 }
+        );
       }
     }
 
     // Build update data object
-    const updateData: Record<string, unknown> = {};
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
     if (name) updateData.name = name;
     if (subject) updateData.subject = subject;
-    if (previewText !== undefined) updateData.previewText = previewText;
-    if (templateId !== undefined) updateData.templateId = templateId;
-    if (listIds) updateData.listIds = listIds;
-    if (fromName !== undefined) updateData.fromName = fromName;
-    if (fromEmail !== undefined) updateData.fromEmail = fromEmail;
-    if (replyTo !== undefined) updateData.replyTo = replyTo;
+    if (previewText !== undefined) updateData.preview_text = previewText;
+    if (templateId !== undefined) updateData.template_id = templateId;
+    if (listIds) updateData.list_ids = listIds;
+    if (fromName !== undefined) updateData.from_name = fromName;
+    if (fromEmail !== undefined) updateData.from_email = fromEmail;
+    if (replyTo !== undefined) updateData.reply_to = replyTo;
     if (scheduledAt !== undefined) {
-      updateData.scheduledAt = scheduledAt ? new Date(scheduledAt) : null;
+      updateData.scheduled_at = scheduledAt || null;
     }
     if (status) updateData.status = status;
 
-    const campaign = await prisma.campaign.update({
-      where: { id },
-      data: updateData,
-      include: {
-        template: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-    });
+    const { data: campaign, error: updateError } = await supabaseAdmin
+      .from('campaigns')
+      .update(updateData)
+      .eq('id', id)
+      .select('*, email_templates(id, name)')
+      .single();
 
-    return NextResponse.json(campaign);
+    if (updateError) {
+      console.error('Error updating campaign:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update campaign' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      id: campaign.id,
+      name: campaign.name,
+      subject: campaign.subject,
+      previewText: campaign.preview_text,
+      status: campaign.status,
+      templateId: campaign.template_id,
+      template: campaign.email_templates
+        ? {
+            id: campaign.email_templates.id,
+            name: campaign.email_templates.name,
+          }
+        : null,
+      listIds: campaign.list_ids,
+      fromName: campaign.from_name,
+      fromEmail: campaign.from_email,
+      replyTo: campaign.reply_to,
+      scheduledAt: campaign.scheduled_at,
+      sentAt: campaign.sent_at,
+      totalRecipients: campaign.total_recipients,
+      createdAt: campaign.created_at,
+      updatedAt: campaign.updated_at,
+    });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -230,14 +318,14 @@ export async function DELETE(
     const { id } = await params;
 
     // Check if campaign exists and belongs to user
-    const existingCampaign = await prisma.campaign.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-    });
+    const { data: existingCampaign, error: fetchError } = await supabaseAdmin
+      .from('campaigns')
+      .select('id, status')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
-    if (!existingCampaign) {
+    if (fetchError || !existingCampaign) {
       return NextResponse.json(
         { error: 'Campaign not found' },
         { status: 404 }
@@ -245,16 +333,29 @@ export async function DELETE(
     }
 
     // Don't allow deletion of sending campaigns
-    if (existingCampaign.status === CampaignStatus.SENDING) {
+    if (existingCampaign.status === 'SENDING') {
       return NextResponse.json(
         { error: 'Cannot delete a campaign that is currently sending' },
         { status: 400 }
       );
     }
 
-    await prisma.campaign.delete({
-      where: { id },
-    });
+    // Delete associated email sends first
+    await supabaseAdmin.from('email_sends').delete().eq('campaign_id', id);
+
+    // Delete the campaign
+    const { error: deleteError } = await supabaseAdmin
+      .from('campaigns')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error('Error deleting campaign:', deleteError);
+      return NextResponse.json(
+        { error: 'Failed to delete campaign' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

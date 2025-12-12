@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
 import { subDays, startOfDay, endOfDay, format } from 'date-fns';
-import { ContactStatus, CampaignStatus, EmailSendStatus } from '@prisma/client';
 
 // GET /api/analytics - Get analytics dashboard data
 export async function GET(request: NextRequest) {
@@ -15,126 +14,202 @@ export async function GET(request: NextRequest) {
     const endDate = endOfDay(new Date());
     const startDate = startOfDay(subDays(new Date(), days));
 
-    // Get overview stats
+    // Get overview stats - all in parallel
     const [
-      totalContacts,
-      subscribedContacts,
-      totalLists,
-      totalCampaigns,
-      sentCampaigns,
-      totalEmailsSent,
+      totalContactsResult,
+      subscribedContactsResult,
+      totalListsResult,
+      totalCampaignsResult,
+      sentCampaignsResult,
     ] = await Promise.all([
-      prisma.contact.count({ where: { userId: user.id } }),
-      prisma.contact.count({
-        where: { userId: user.id, status: ContactStatus.SUBSCRIBED },
-      }),
-      prisma.list.count({ where: { userId: user.id } }),
-      prisma.campaign.count({ where: { userId: user.id } }),
-      prisma.campaign.count({
-        where: { userId: user.id, status: CampaignStatus.SENT },
-      }),
-      prisma.emailSend.count({
-        where: {
-          campaign: { userId: user.id },
-          sentAt: { not: null },
-        },
-      }),
+      supabaseAdmin
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id),
+      supabaseAdmin
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('status', 'SUBSCRIBED'),
+      supabaseAdmin
+        .from('lists')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id),
+      supabaseAdmin
+        .from('campaigns')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id),
+      supabaseAdmin
+        .from('campaigns')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('status', 'SENT'),
     ]);
 
-    // Get email engagement metrics
-    const [delivered, opened, clicked, bounced, complained] = await Promise.all([
-      prisma.emailSend.count({
-        where: {
-          campaign: { userId: user.id },
-          status: { in: [EmailSendStatus.DELIVERED, EmailSendStatus.SENT] },
-        },
-      }),
-      prisma.emailSend.count({
-        where: {
-          campaign: { userId: user.id },
-          openedAt: { not: null },
-        },
-      }),
-      prisma.emailSend.count({
-        where: {
-          campaign: { userId: user.id },
-          clickedAt: { not: null },
-        },
-      }),
-      prisma.emailSend.count({
-        where: {
-          campaign: { userId: user.id },
-          status: EmailSendStatus.BOUNCED,
-        },
-      }),
-      prisma.emailSend.count({
-        where: {
-          campaign: { userId: user.id },
-          status: EmailSendStatus.COMPLAINED,
-        },
-      }),
-    ]);
+    const totalContacts = totalContactsResult.count || 0;
+    const subscribedContacts = subscribedContactsResult.count || 0;
+    const totalLists = totalListsResult.count || 0;
+    const totalCampaigns = totalCampaignsResult.count || 0;
+    const sentCampaigns = sentCampaignsResult.count || 0;
+
+    // Get all user's campaign IDs for email send queries
+    const { data: userCampaigns } = await supabaseAdmin
+      .from('campaigns')
+      .select('id')
+      .eq('user_id', user.id);
+
+    const campaignIds = (userCampaigns || []).map((c) => c.id);
+
+    let totalEmailsSent = 0;
+    let delivered = 0;
+    let opened = 0;
+    let clicked = 0;
+    let bounced = 0;
+    let complained = 0;
+
+    if (campaignIds.length > 0) {
+      // Get email engagement metrics
+      const [
+        totalEmailsSentResult,
+        deliveredResult,
+        openedResult,
+        clickedResult,
+        bouncedResult,
+        complainedResult,
+      ] = await Promise.all([
+        supabaseAdmin
+          .from('email_sends')
+          .select('*', { count: 'exact', head: true })
+          .in('campaign_id', campaignIds)
+          .not('sent_at', 'is', null),
+        supabaseAdmin
+          .from('email_sends')
+          .select('*', { count: 'exact', head: true })
+          .in('campaign_id', campaignIds)
+          .in('status', ['DELIVERED', 'SENT']),
+        supabaseAdmin
+          .from('email_sends')
+          .select('*', { count: 'exact', head: true })
+          .in('campaign_id', campaignIds)
+          .not('opened_at', 'is', null),
+        supabaseAdmin
+          .from('email_sends')
+          .select('*', { count: 'exact', head: true })
+          .in('campaign_id', campaignIds)
+          .not('clicked_at', 'is', null),
+        supabaseAdmin
+          .from('email_sends')
+          .select('*', { count: 'exact', head: true })
+          .in('campaign_id', campaignIds)
+          .eq('status', 'BOUNCED'),
+        supabaseAdmin
+          .from('email_sends')
+          .select('*', { count: 'exact', head: true })
+          .in('campaign_id', campaignIds)
+          .eq('status', 'COMPLAINED'),
+      ]);
+
+      totalEmailsSent = totalEmailsSentResult.count || 0;
+      delivered = deliveredResult.count || 0;
+      opened = openedResult.count || 0;
+      clicked = clickedResult.count || 0;
+      bounced = bouncedResult.count || 0;
+      complained = complainedResult.count || 0;
+    }
 
     // Calculate rates
     const openRate = delivered > 0 ? (opened / delivered) * 100 : 0;
     const clickRate = opened > 0 ? (clicked / opened) * 100 : 0;
-    const bounceRate = totalEmailsSent > 0 ? (bounced / totalEmailsSent) * 100 : 0;
-    const complaintRate = totalEmailsSent > 0 ? (complained / totalEmailsSent) * 100 : 0;
+    const bounceRate =
+      totalEmailsSent > 0 ? (bounced / totalEmailsSent) * 100 : 0;
+    const complaintRate =
+      totalEmailsSent > 0 ? (complained / totalEmailsSent) * 100 : 0;
 
-    // Get daily email stats for chart
-    const dailyStats = await prisma.$queryRaw<
-      { date: Date; sent: bigint; opened: bigint; clicked: bigint }[]
-    >`
-      SELECT
-        DATE("sentAt") as date,
-        COUNT(*) as sent,
-        COUNT(CASE WHEN "openedAt" IS NOT NULL THEN 1 END) as opened,
-        COUNT(CASE WHEN "clickedAt" IS NOT NULL THEN 1 END) as clicked
-      FROM "EmailSend" es
-      JOIN "Campaign" c ON es."campaignId" = c.id
-      WHERE c."userId" = ${user.id}
-        AND es."sentAt" >= ${startDate}
-        AND es."sentAt" <= ${endDate}
-      GROUP BY DATE("sentAt")
-      ORDER BY date ASC
-    `;
+    // Get daily email stats for chart using RPC or direct query
+    // Since Supabase doesn't support complex groupBy with raw SQL easily,
+    // we'll fetch the data and group it in JavaScript
+    let dailyStats: {
+      date: string;
+      sent: number;
+      opened: number;
+      clicked: number;
+    }[] = [];
+
+    if (campaignIds.length > 0) {
+      const { data: emailSendsData } = await supabaseAdmin
+        .from('email_sends')
+        .select('sent_at, opened_at, clicked_at')
+        .in('campaign_id', campaignIds)
+        .gte('sent_at', startDate.toISOString())
+        .lte('sent_at', endDate.toISOString());
+
+      // Group by date
+      const statsMap = new Map<
+        string,
+        { sent: number; opened: number; clicked: number }
+      >();
+
+      (emailSendsData || []).forEach((send) => {
+        if (send.sent_at) {
+          const dateKey = format(new Date(send.sent_at), 'yyyy-MM-dd');
+          const existing = statsMap.get(dateKey) || {
+            sent: 0,
+            opened: 0,
+            clicked: 0,
+          };
+          existing.sent += 1;
+          if (send.opened_at) existing.opened += 1;
+          if (send.clicked_at) existing.clicked += 1;
+          statsMap.set(dateKey, existing);
+        }
+      });
+
+      dailyStats = Array.from(statsMap.entries())
+        .map(([date, stats]) => ({
+          date: format(new Date(date), 'MMM dd'),
+          ...stats,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    }
 
     // Get recent campaigns with performance
-    const recentCampaigns = await prisma.campaign.findMany({
-      where: {
-        userId: user.id,
-        status: CampaignStatus.SENT,
-      },
-      orderBy: { completedAt: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        name: true,
-        subject: true,
-        completedAt: true,
-        _count: {
-          select: {
-            emailSends: true,
-          },
-        },
-      },
-    });
+    const { data: recentCampaignsData } = await supabaseAdmin
+      .from('campaigns')
+      .select('id, name, subject, completed_at')
+      .eq('user_id', user.id)
+      .eq('status', 'SENT')
+      .order('completed_at', { ascending: false })
+      .limit(5);
 
     // Get metrics for recent campaigns
     const campaignsWithMetrics = await Promise.all(
-      recentCampaigns.map(async (campaign) => {
-        const [sent, openedCount, clickedCount] = await Promise.all([
-          prisma.emailSend.count({ where: { campaignId: campaign.id } }),
-          prisma.emailSend.count({
-            where: { campaignId: campaign.id, openedAt: { not: null } },
-          }),
-          prisma.emailSend.count({
-            where: { campaignId: campaign.id, clickedAt: { not: null } },
-          }),
+      (recentCampaignsData || []).map(async (campaign) => {
+        const [sentResult, openedResult, clickedResult] = await Promise.all([
+          supabaseAdmin
+            .from('email_sends')
+            .select('*', { count: 'exact', head: true })
+            .eq('campaign_id', campaign.id),
+          supabaseAdmin
+            .from('email_sends')
+            .select('*', { count: 'exact', head: true })
+            .eq('campaign_id', campaign.id)
+            .not('opened_at', 'is', null),
+          supabaseAdmin
+            .from('email_sends')
+            .select('*', { count: 'exact', head: true })
+            .eq('campaign_id', campaign.id)
+            .not('clicked_at', 'is', null),
         ]);
 
+        const sent = sentResult.count || 0;
+        const openedCount = openedResult.count || 0;
+        const clickedCount = clickedResult.count || 0;
+
         return {
-          ...campaign,
+          id: campaign.id,
+          name: campaign.name,
+          subject: campaign.subject,
+          completedAt: campaign.completed_at,
           metrics: {
             sent,
             opened: openedCount,
@@ -147,31 +222,34 @@ export async function GET(request: NextRequest) {
     );
 
     // Get contact growth data
-    const contactGrowth = await prisma.$queryRaw<
-      { date: Date; count: bigint }[]
-    >`
-      SELECT
-        DATE("createdAt") as date,
-        COUNT(*) as count
-      FROM "Contact"
-      WHERE "userId" = ${user.id}
-        AND "createdAt" >= ${startDate}
-        AND "createdAt" <= ${endDate}
-      GROUP BY DATE("createdAt")
-      ORDER BY date ASC
-    `;
+    const { data: contactGrowthData } = await supabaseAdmin
+      .from('contacts')
+      .select('created_at')
+      .eq('user_id', user.id)
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', endDate.toISOString());
+
+    // Group contact growth by date
+    const contactGrowthMap = new Map<string, number>();
+    (contactGrowthData || []).forEach((contact) => {
+      const dateKey = format(new Date(contact.created_at), 'yyyy-MM-dd');
+      contactGrowthMap.set(dateKey, (contactGrowthMap.get(dateKey) || 0) + 1);
+    });
+
+    const contactGrowth = Array.from(contactGrowthMap.entries())
+      .map(([date, count]) => ({
+        date: format(new Date(date), 'MMM dd'),
+        count,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     // Get top performing lists
-    const topLists = await prisma.list.findMany({
-      where: { userId: user.id },
-      orderBy: { contactCount: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        name: true,
-        contactCount: true,
-      },
-    });
+    const { data: topLists } = await supabaseAdmin
+      .from('lists')
+      .select('id, name, contact_count')
+      .eq('user_id', user.id)
+      .order('contact_count', { ascending: false })
+      .limit(5);
 
     return NextResponse.json({
       overview: {
@@ -194,19 +272,15 @@ export async function GET(request: NextRequest) {
         complaintRate: Math.round(complaintRate * 100) / 100,
       },
       charts: {
-        dailyStats: dailyStats.map((stat) => ({
-          date: format(new Date(stat.date), 'MMM dd'),
-          sent: Number(stat.sent),
-          opened: Number(stat.opened),
-          clicked: Number(stat.clicked),
-        })),
-        contactGrowth: contactGrowth.map((stat) => ({
-          date: format(new Date(stat.date), 'MMM dd'),
-          count: Number(stat.count),
-        })),
+        dailyStats,
+        contactGrowth,
       },
       recentCampaigns: campaignsWithMetrics,
-      topLists,
+      topLists: (topLists || []).map((list) => ({
+        id: list.id,
+        name: list.name,
+        contactCount: list.contact_count,
+      })),
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {

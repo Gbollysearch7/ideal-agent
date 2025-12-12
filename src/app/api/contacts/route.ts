@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
-import { ContactStatus } from '@prisma/client';
 
 // GET /api/contacts - List contacts with pagination, search, and filtering
 export async function GET(request: NextRequest) {
@@ -13,67 +12,82 @@ export async function GET(request: NextRequest) {
     // Pagination
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '20', 10);
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
 
     // Search
     const search = searchParams.get('search') || '';
 
     // Filters
-    const status = searchParams.get('status') as ContactStatus | null;
+    const status = searchParams.get('status');
     const listId = searchParams.get('listId');
 
-    // Build where clause
-    const where: any = {
-      userId: user.id,
-    };
+    // Build query
+    let query = supabaseAdmin
+      .from('contacts')
+      .select('*, list_contacts(list_id, lists(id, name))', { count: 'exact' })
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
+    // Apply search filter
     if (search) {
-      where.OR = [
-        { email: { contains: search, mode: 'insensitive' } },
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-      ];
+      query = query.or(
+        `email.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%`
+      );
     }
 
+    // Apply status filter
     if (status) {
-      where.status = status;
+      query = query.eq('status', status);
     }
 
+    // Apply list filter - need separate query for this
     if (listId) {
-      where.lists = {
-        some: {
-          listId: listId,
-        },
-      };
+      // Get contact IDs that belong to the list first
+      const { data: listContacts } = await supabaseAdmin
+        .from('list_contacts')
+        .select('contact_id')
+        .eq('list_id', listId);
+
+      if (listContacts && listContacts.length > 0) {
+        const contactIds = listContacts.map((lc) => lc.contact_id);
+        query = query.in('id', contactIds);
+      } else {
+        // No contacts in this list
+        return NextResponse.json({
+          contacts: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0,
+          },
+        });
+      }
     }
 
-    // Execute queries in parallel
-    const [contacts, total] = await Promise.all([
-      prisma.contact.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          lists: {
-            include: {
-              list: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-        },
-      }),
-      prisma.contact.count({ where }),
-    ]);
+    const { data: contacts, count, error } = await query;
+
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
 
     // Transform the response
-    const transformedContacts = contacts.map((contact) => ({
-      ...contact,
-      lists: contact.lists.map((cl) => cl.list),
+    const transformedContacts = (contacts || []).map((contact: any) => ({
+      id: contact.id,
+      email: contact.email,
+      firstName: contact.first_name,
+      lastName: contact.last_name,
+      status: contact.status,
+      metadata: contact.metadata,
+      userId: contact.user_id,
+      createdAt: contact.created_at,
+      updatedAt: contact.updated_at,
+      lastEmailSentAt: contact.last_email_sent_at,
+      lists: (contact.list_contacts || [])
+        .map((lc: any) => lc.lists)
+        .filter(Boolean),
     }));
 
     return NextResponse.json({
@@ -81,8 +95,8 @@ export async function GET(request: NextRequest) {
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit),
       },
     });
   } catch (error) {
@@ -122,12 +136,12 @@ export async function POST(request: NextRequest) {
     const { email, firstName, lastName, metadata, listIds } = validation.data;
 
     // Check if contact already exists for this user
-    const existingContact = await prisma.contact.findFirst({
-      where: {
-        email: email.toLowerCase(),
-        userId: user.id,
-      },
-    });
+    const { data: existingContact } = await supabaseAdmin
+      .from('contacts')
+      .select('id')
+      .eq('email', email.toLowerCase())
+      .eq('user_id', user.id)
+      .single();
 
     if (existingContact) {
       return NextResponse.json(
@@ -136,49 +150,74 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the contact
-    const contact = await prisma.contact.create({
-      data: {
-        email: email.toLowerCase(),
-        firstName,
-        lastName,
-        metadata: (metadata || {}) as object,
-        userId: user.id,
-        status: ContactStatus.SUBSCRIBED,
-        lists: listIds
-          ? {
-              create: listIds.map((listId) => ({
-                listId,
-              })),
-            }
-          : undefined,
-      },
-      include: {
-        lists: {
-          include: {
-            list: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    // Generate contact ID
+    const contactId = `c_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
 
-    // Update list contact counts
-    if (listIds && listIds.length > 0) {
-      await prisma.list.updateMany({
-        where: { id: { in: listIds } },
-        data: { contactCount: { increment: 1 } },
-      });
+    // Create the contact
+    const { data: contact, error: contactError } = await supabaseAdmin
+      .from('contacts')
+      .insert({
+        id: contactId,
+        email: email.toLowerCase(),
+        first_name: firstName || null,
+        last_name: lastName || null,
+        metadata: metadata || {},
+        user_id: user.id,
+        status: 'SUBSCRIBED',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (contactError) {
+      console.error('Supabase error creating contact:', contactError);
+      throw contactError;
     }
+
+    // Add to lists if specified
+    if (listIds && listIds.length > 0) {
+      const listContactRecords = listIds.map((listId) => ({
+        contact_id: contactId,
+        list_id: listId,
+        created_at: new Date().toISOString(),
+      }));
+
+      await supabaseAdmin.from('list_contacts').insert(listContactRecords);
+
+      // Update list contact counts
+      for (const listId of listIds) {
+        const { data: list } = await supabaseAdmin
+          .from('lists')
+          .select('contact_count')
+          .eq('id', listId)
+          .single();
+
+        await supabaseAdmin
+          .from('lists')
+          .update({ contact_count: (list?.contact_count || 0) + 1 })
+          .eq('id', listId);
+      }
+    }
+
+    // Fetch lists for the contact
+    const { data: contactLists } = await supabaseAdmin
+      .from('list_contacts')
+      .select('lists(id, name)')
+      .eq('contact_id', contactId);
 
     return NextResponse.json(
       {
-        ...contact,
-        lists: contact.lists.map((cl) => cl.list),
+        id: contact.id,
+        email: contact.email,
+        firstName: contact.first_name,
+        lastName: contact.last_name,
+        status: contact.status,
+        metadata: contact.metadata,
+        userId: contact.user_id,
+        createdAt: contact.created_at,
+        updatedAt: contact.updated_at,
+        lists: (contactLists || []).map((cl: any) => cl.lists).filter(Boolean),
       },
       { status: 201 }
     );

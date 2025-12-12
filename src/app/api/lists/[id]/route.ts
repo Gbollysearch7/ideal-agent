@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
 
 // GET /api/lists/[id] - Get a single list with contacts
@@ -16,53 +16,56 @@ export async function GET(
     // Pagination for contacts
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '20', 10);
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
 
-    const list = await prisma.list.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-    });
+    // Get the list
+    const { data: list, error: listError } = await supabaseAdmin
+      .from('lists')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
-    if (!list) {
+    if (listError || !list) {
       return NextResponse.json({ error: 'List not found' }, { status: 404 });
     }
 
-    // Get contacts in this list
-    const [contacts, totalContacts] = await Promise.all([
-      prisma.listContact.findMany({
-        where: { listId: id },
-        skip,
-        take: limit,
-        orderBy: { addedAt: 'desc' },
-        include: {
-          contact: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-              status: true,
-              createdAt: true,
-            },
-          },
-        },
-      }),
-      prisma.listContact.count({ where: { listId: id } }),
-    ]);
+    // Get contacts in this list with pagination
+    const { data: listContacts, count } = await supabaseAdmin
+      .from('list_contacts')
+      .select(
+        'created_at, contacts(id, email, first_name, last_name, status, created_at)',
+        { count: 'exact' }
+      )
+      .eq('list_id', id)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    const contacts = (listContacts || [])
+      .map((lc: any) => ({
+        id: lc.contacts?.id,
+        email: lc.contacts?.email,
+        firstName: lc.contacts?.first_name,
+        lastName: lc.contacts?.last_name,
+        status: lc.contacts?.status,
+        createdAt: lc.contacts?.created_at,
+        addedAt: lc.created_at,
+      }))
+      .filter((c) => c.id);
 
     return NextResponse.json({
-      ...list,
-      contacts: contacts.map((cl) => ({
-        ...cl.contact,
-        addedAt: cl.addedAt,
-      })),
+      id: list.id,
+      name: list.name,
+      description: list.description,
+      contactCount: list.contact_count,
+      createdAt: list.created_at,
+      updatedAt: list.updated_at,
+      contacts,
       contactsPagination: {
         page,
         limit,
-        total: totalContacts,
-        totalPages: Math.ceil(totalContacts / limit),
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit),
       },
     });
   } catch (error) {
@@ -79,7 +82,11 @@ export async function GET(
 
 // PATCH /api/lists/[id] - Update a list
 const updateListSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100, 'Name is too long').optional(),
+  name: z
+    .string()
+    .min(1, 'Name is required')
+    .max(100, 'Name is too long')
+    .optional(),
   description: z.string().max(500, 'Description is too long').optional(),
 });
 
@@ -101,12 +108,12 @@ export async function PATCH(
     }
 
     // Check if list exists and belongs to user
-    const existingList = await prisma.list.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-    });
+    const { data: existingList } = await supabaseAdmin
+      .from('lists')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
     if (!existingList) {
       return NextResponse.json({ error: 'List not found' }, { status: 404 });
@@ -116,13 +123,13 @@ export async function PATCH(
 
     // If name is being changed, check for duplicates
     if (name && name.toLowerCase() !== existingList.name.toLowerCase()) {
-      const duplicateList = await prisma.list.findFirst({
-        where: {
-          name: { equals: name, mode: 'insensitive' },
-          userId: user.id,
-          id: { not: id },
-        },
-      });
+      const { data: duplicateList } = await supabaseAdmin
+        .from('lists')
+        .select('id')
+        .eq('user_id', user.id)
+        .ilike('name', name)
+        .neq('id', id)
+        .single();
 
       if (duplicateList) {
         return NextResponse.json(
@@ -132,15 +139,32 @@ export async function PATCH(
       }
     }
 
-    const list = await prisma.list.update({
-      where: { id },
-      data: {
-        ...(name && { name }),
-        ...(description !== undefined && { description }),
-      },
-    });
+    // Build update data
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (name) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
 
-    return NextResponse.json(list);
+    const { data: list, error } = await supabaseAdmin
+      .from('lists')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return NextResponse.json({
+      id: list.id,
+      name: list.name,
+      description: list.description,
+      contactCount: list.contact_count,
+      createdAt: list.created_at,
+      updatedAt: list.updated_at,
+    });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -163,21 +187,26 @@ export async function DELETE(
     const { id } = await params;
 
     // Check if list exists and belongs to user
-    const existingList = await prisma.list.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-    });
+    const { data: existingList } = await supabaseAdmin
+      .from('lists')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
     if (!existingList) {
       return NextResponse.json({ error: 'List not found' }, { status: 404 });
     }
 
-    // Delete the list (cascade will handle related records)
-    await prisma.list.delete({
-      where: { id },
-    });
+    // Delete list_contacts associations first
+    await supabaseAdmin.from('list_contacts').delete().eq('list_id', id);
+
+    // Delete the list
+    const { error } = await supabaseAdmin.from('lists').delete().eq('id', id);
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

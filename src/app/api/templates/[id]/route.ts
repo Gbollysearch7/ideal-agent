@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
 
 // GET /api/templates/[id] - Get a single template
@@ -12,21 +12,35 @@ export async function GET(
     const user = await requireAuth();
     const { id } = await params;
 
-    const template = await prisma.emailTemplate.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-    });
+    const { data: template, error } = await supabaseAdmin
+      .from('email_templates')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
-    if (!template) {
+    if (error || !template) {
       return NextResponse.json(
         { error: 'Template not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(template);
+    return NextResponse.json({
+      id: template.id,
+      name: template.name,
+      subject: template.subject,
+      htmlContent: template.html_content,
+      textContent: template.text_content,
+      previewText: template.preview_text,
+      thumbnailUrl: template.thumbnail_url,
+      isDraft: template.is_draft,
+      category: template.category,
+      variables: template.variables,
+      userId: template.user_id,
+      createdAt: template.created_at,
+      updatedAt: template.updated_at,
+    });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -41,12 +55,22 @@ export async function GET(
 
 // PATCH /api/templates/[id] - Update a template
 const updateTemplateSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100, 'Name is too long').optional(),
-  subject: z.string().min(1, 'Subject is required').max(200, 'Subject is too long').optional(),
+  name: z
+    .string()
+    .min(1, 'Name is required')
+    .max(100, 'Name is too long')
+    .optional(),
+  subject: z
+    .string()
+    .min(1, 'Subject is required')
+    .max(200, 'Subject is too long')
+    .optional(),
   htmlContent: z.string().min(1, 'HTML content is required').optional(),
   textContent: z.string().optional(),
+  previewText: z.string().max(200).optional().nullable(),
   category: z.string().max(50).optional().nullable(),
-  thumbnail: z.string().url().optional().nullable(),
+  thumbnailUrl: z.string().url().optional().nullable(),
+  isDraft: z.boolean().optional(),
   variables: z.array(z.string()).optional(),
 });
 
@@ -68,22 +92,31 @@ export async function PATCH(
     }
 
     // Check if template exists and belongs to user
-    const existingTemplate = await prisma.emailTemplate.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-    });
+    const { data: existingTemplate, error: fetchError } = await supabaseAdmin
+      .from('email_templates')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
-    if (!existingTemplate) {
+    if (fetchError || !existingTemplate) {
       return NextResponse.json(
         { error: 'Template not found' },
         { status: 404 }
       );
     }
 
-    const { name, subject, htmlContent, textContent, category, thumbnail, variables } =
-      validation.data;
+    const {
+      name,
+      subject,
+      htmlContent,
+      textContent,
+      previewText,
+      category,
+      thumbnailUrl,
+      isDraft,
+      variables,
+    } = validation.data;
 
     // Extract variables from HTML content if content changed and variables not provided
     let finalVariables = variables;
@@ -91,20 +124,50 @@ export async function PATCH(
       finalVariables = extractVariables(htmlContent);
     }
 
-    const template = await prisma.emailTemplate.update({
-      where: { id },
-      data: {
-        ...(name && { name }),
-        ...(subject && { subject }),
-        ...(htmlContent && { htmlContent }),
-        ...(textContent !== undefined && { textContent }),
-        ...(category !== undefined && { category }),
-        ...(thumbnail !== undefined && { thumbnail }),
-        ...(finalVariables && { variables: finalVariables }),
-      },
-    });
+    // Build update data object
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (name) updateData.name = name;
+    if (subject) updateData.subject = subject;
+    if (htmlContent) updateData.html_content = htmlContent;
+    if (textContent !== undefined) updateData.text_content = textContent;
+    if (previewText !== undefined) updateData.preview_text = previewText;
+    if (category !== undefined) updateData.category = category;
+    if (thumbnailUrl !== undefined) updateData.thumbnail_url = thumbnailUrl;
+    if (isDraft !== undefined) updateData.is_draft = isDraft;
+    if (finalVariables) updateData.variables = finalVariables;
 
-    return NextResponse.json(template);
+    const { data: template, error: updateError } = await supabaseAdmin
+      .from('email_templates')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating template:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update template' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      id: template.id,
+      name: template.name,
+      subject: template.subject,
+      htmlContent: template.html_content,
+      textContent: template.text_content,
+      previewText: template.preview_text,
+      thumbnailUrl: template.thumbnail_url,
+      isDraft: template.is_draft,
+      category: template.category,
+      variables: template.variables,
+      userId: template.user_id,
+      createdAt: template.created_at,
+      updatedAt: template.updated_at,
+    });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -127,14 +190,14 @@ export async function DELETE(
     const { id } = await params;
 
     // Check if template exists and belongs to user
-    const existingTemplate = await prisma.emailTemplate.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-    });
+    const { data: existingTemplate, error: fetchError } = await supabaseAdmin
+      .from('email_templates')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
-    if (!existingTemplate) {
+    if (fetchError || !existingTemplate) {
       return NextResponse.json(
         { error: 'Template not found' },
         { status: 404 }
@@ -142,13 +205,12 @@ export async function DELETE(
     }
 
     // Check if template is being used in any campaigns
-    const campaignsUsingTemplate = await prisma.campaign.count({
-      where: {
-        templateId: id,
-      },
-    });
+    const { count: campaignsUsingTemplate } = await supabaseAdmin
+      .from('campaigns')
+      .select('*', { count: 'exact', head: true })
+      .eq('template_id', id);
 
-    if (campaignsUsingTemplate > 0) {
+    if (campaignsUsingTemplate && campaignsUsingTemplate > 0) {
       return NextResponse.json(
         {
           error: `This template is used by ${campaignsUsingTemplate} campaign(s). Remove it from campaigns before deleting.`,
@@ -157,9 +219,18 @@ export async function DELETE(
       );
     }
 
-    await prisma.emailTemplate.delete({
-      where: { id },
-    });
+    const { error: deleteError } = await supabaseAdmin
+      .from('email_templates')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error('Error deleting template:', deleteError);
+      return NextResponse.json(
+        { error: 'Failed to delete template' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -184,35 +255,66 @@ export async function POST(
     const { id } = await params;
 
     // Check if template exists and belongs to user
-    const existingTemplate = await prisma.emailTemplate.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
-    });
+    const { data: existingTemplate, error: fetchError } = await supabaseAdmin
+      .from('email_templates')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
-    if (!existingTemplate) {
+    if (fetchError || !existingTemplate) {
       return NextResponse.json(
         { error: 'Template not found' },
         { status: 404 }
       );
     }
 
+    // Generate new template ID
+    const newTemplateId = `tpl_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+
     // Create a copy of the template
-    const newTemplate = await prisma.emailTemplate.create({
-      data: {
+    const { data: newTemplate, error: createError } = await supabaseAdmin
+      .from('email_templates')
+      .insert({
+        id: newTemplateId,
         name: `${existingTemplate.name} (Copy)`,
         subject: existingTemplate.subject,
-        htmlContent: existingTemplate.htmlContent,
-        textContent: existingTemplate.textContent,
-        previewText: existingTemplate.previewText,
-        thumbnailUrl: existingTemplate.thumbnailUrl,
-        isDraft: true,
-        userId: user.id,
-      },
-    });
+        html_content: existingTemplate.html_content,
+        text_content: existingTemplate.text_content,
+        preview_text: existingTemplate.preview_text,
+        thumbnail_url: existingTemplate.thumbnail_url,
+        is_draft: true,
+        user_id: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
 
-    return NextResponse.json(newTemplate, { status: 201 });
+    if (createError) {
+      console.error('Error duplicating template:', createError);
+      return NextResponse.json(
+        { error: 'Failed to duplicate template' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        id: newTemplate.id,
+        name: newTemplate.name,
+        subject: newTemplate.subject,
+        htmlContent: newTemplate.html_content,
+        textContent: newTemplate.text_content,
+        previewText: newTemplate.preview_text,
+        thumbnailUrl: newTemplate.thumbnail_url,
+        isDraft: newTemplate.is_draft,
+        userId: newTemplate.user_id,
+        createdAt: newTemplate.created_at,
+        updatedAt: newTemplate.updated_at,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

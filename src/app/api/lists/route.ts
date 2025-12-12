@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
 
 // GET /api/lists - List all lists with pagination
@@ -12,49 +12,50 @@ export async function GET(request: NextRequest) {
     // Pagination
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '20', 10);
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
 
     // Search
     const search = searchParams.get('search') || '';
 
-    // Build where clause
-    const where: any = {
-      userId: user.id,
-    };
+    // Build query
+    let query = supabaseAdmin
+      .from('lists')
+      .select('id, name, description, contact_count, created_at, updated_at', {
+        count: 'exact',
+      })
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
+    // Apply search filter
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-      ];
+      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
     }
 
-    // Execute queries in parallel
-    const [lists, total] = await Promise.all([
-      prisma.list.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          contactCount: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      }),
-      prisma.list.count({ where }),
-    ]);
+    const { data: lists, count, error } = await query;
+
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
+
+    // Transform response
+    const transformedLists = (lists || []).map((list) => ({
+      id: list.id,
+      name: list.name,
+      description: list.description,
+      contactCount: list.contact_count,
+      createdAt: list.created_at,
+      updatedAt: list.updated_at,
+    }));
 
     return NextResponse.json({
-      lists,
+      lists: transformedLists,
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit),
       },
     });
   } catch (error) {
@@ -90,13 +91,13 @@ export async function POST(request: NextRequest) {
 
     const { name, description } = validation.data;
 
-    // Check if list with same name exists
-    const existingList = await prisma.list.findFirst({
-      where: {
-        name: { equals: name, mode: 'insensitive' },
-        userId: user.id,
-      },
-    });
+    // Check if list with same name exists (case-insensitive)
+    const { data: existingList } = await supabaseAdmin
+      .from('lists')
+      .select('id')
+      .eq('user_id', user.id)
+      .ilike('name', name)
+      .single();
 
     if (existingList) {
       return NextResponse.json(
@@ -105,15 +106,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const list = await prisma.list.create({
-      data: {
-        name,
-        description,
-        userId: user.id,
-      },
-    });
+    // Generate list ID
+    const listId = `l_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
 
-    return NextResponse.json(list, { status: 201 });
+    const { data: list, error } = await supabaseAdmin
+      .from('lists')
+      .insert({
+        id: listId,
+        name,
+        description: description || null,
+        user_id: user.id,
+        contact_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
+
+    return NextResponse.json(
+      {
+        id: list.id,
+        name: list.name,
+        description: list.description,
+        contactCount: list.contact_count,
+        createdAt: list.created_at,
+        updatedAt: list.updated_at,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
