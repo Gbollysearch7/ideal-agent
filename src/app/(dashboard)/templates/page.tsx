@@ -176,12 +176,20 @@ export default function TemplatesPage() {
             Create and manage your email templates
           </p>
         </div>
-        <Button asChild>
-          <Link href="/dashboard/templates/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Template
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard/templates/new">
+              <Plus className="mr-2 h-4 w-4" />
+              HTML Editor
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/dashboard/templates/builder">
+              <Plus className="mr-2 h-4 w-4" />
+              Visual Builder
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
