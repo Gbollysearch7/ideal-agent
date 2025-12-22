@@ -110,10 +110,21 @@ export async function POST(
       .select('contact_id, contacts(*)')
       .in('list_id', campaign.list_ids);
 
+    // Define contact type for proper typing
+    interface Contact {
+      id: string;
+      email: string;
+      first_name?: string;
+      last_name?: string;
+      status: string;
+      metadata?: Record<string, unknown>;
+    }
+
     // Deduplicate contacts and filter for subscribed only
-    const contactMap = new Map<string, any>();
+    const contactMap = new Map<string, Contact>();
     for (const lc of listContacts || []) {
-      const contact = lc.contacts;
+      // contacts is returned as a single object from the join
+      const contact = lc.contacts as unknown as Contact | null;
       if (contact && contact.status === ContactStatus.SUBSCRIBED) {
         contactMap.set(contact.id, contact);
       }

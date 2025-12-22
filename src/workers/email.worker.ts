@@ -101,7 +101,7 @@ async function processEmailJob(job: Job<EmailJobData>) {
       subject,
       html,
       text,
-      reply_to: replyTo,
+      replyTo,
       headers: campaignId
         ? {
             'X-Campaign-ID': campaignId,

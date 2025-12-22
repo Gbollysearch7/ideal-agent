@@ -7,3 +7,7 @@ export * from './block-renderer';
 export * from './ai-image-import';
 export * from './ai-variations';
 export * from './template-library';
+export * from './sortable-block';
+export * from './draggable-block-palette';
+export * from './use-keyboard-shortcuts';
+export * from './quick-add-toolbar';
